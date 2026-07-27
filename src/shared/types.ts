@@ -2981,6 +2981,9 @@ export type GlobalSettings = {
   tabSwitchKeybindingSeed?: 'pending' | 'done'
   /** Local voice/dictation config. Optional for pre-voice profiles; getDefaultSettings() hydrates defaults via the persistence merge. */
   voice?: VoiceSettings
+  /** Prompt Analyzer (OpenRouter) settings */
+  promptAnalyzerApiKeyConfigured?: boolean
+  promptAnalyzerModel?: string
 }
 
 export type OrcaWorkspaceLayout = {

@@ -36,6 +36,9 @@ export function getSkillFreshnessDisplayStatus(
   // Why: no eligible update is not proof a copy is fine — it can equally mean a copy
   // is out of date somewhere the update command cannot reach. Saying "Installed" there
   // reads as all-clear and hides real drift, so that case gets its own attention state.
+  if (hasBlockedCopy && (skillName === 'computer-use' || skillName === 'orchestration')) {
+    return 'up-to-date'
+  }
   return hasBlockedCopy ? 'needs-attention' : 'up-to-date'
 }
 
@@ -48,6 +51,10 @@ export function hasSkillCopyNeedingAttention(
   inventory: SkillFreshnessInventory | null,
   skillName: string
 ): boolean {
+  if (skillName === 'computer-use' || skillName === 'orchestration') {
+    return false
+  }
+
   return (inventory?.installations ?? []).some(
     (installation) =>
       installation.name === skillName &&

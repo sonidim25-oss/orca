@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { homedir, userInfo } from 'node:os'
 import { promisify } from 'node:util'
+import { findExistingPosixShellPath } from '../../shared/posix-shell-path'
 import { installRemoteManagedAgentHooks } from './remote-managed-hook-installers'
 import { createManagedHookLocalFilesystem } from './managed-hook-local-filesystem'
 import { withManagedHookInstallLock } from './managed-hook-install-lock'
@@ -46,10 +47,14 @@ function normalizeGrokHome(candidate: string): string | null {
 
 function resolveLoginShell(): string {
   const candidate = process.env.SHELL || userInfo().shell || '/bin/sh'
-  if (!candidate.startsWith('/') || candidate.includes('\\') || hasControlCharacter(candidate)) {
-    return '/bin/sh'
+  const isValid =
+    candidate.startsWith('/') && !candidate.includes('\\') && !hasControlCharacter(candidate)
+  const candidates = isValid && candidate !== '/bin/sh' ? [candidate, '/bin/sh'] : ['/bin/sh']
+  const resolved = findExistingPosixShellPath(candidates)
+  if (resolved) {
+    return resolved
   }
-  return candidate
+  throw new Error(`No login shell found (tried: ${candidates.filter(Boolean).join(', ')})`)
 }
 
 export async function resolveRelayGrokHome(home: string, signal?: AbortSignal): Promise<string> {

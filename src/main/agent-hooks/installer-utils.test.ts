@@ -355,7 +355,7 @@ describe('writeManagedScript', () => {
 
 describe('wrapPosixHookCommand', () => {
   it('produces a guarded command that no-ops when the script is missing', () => {
-    const cmd = wrapPosixHookCommand('/does/not/exist.sh')
+    const cmd = wrapPosixHookCommand('/does/not/exist.sh', {}, '/bin/sh')
     expect(cmd).toBe(
       "if [ -f '/does/not/exist.sh' ] && [ -r '/does/not/exist.sh' ] && [ -x '/does/not/exist.sh' ]; then /bin/sh '/does/not/exist.sh'; else cat >/dev/null 2>&1 || :; fi"
     )
@@ -365,7 +365,11 @@ describe('wrapPosixHookCommand', () => {
     // Why: Electron's userData on macOS lives under "Application Support" with
     // a space. The guard must keep the path quoted so each file test and
     // `/bin/sh` see one argument.
-    const cmd = wrapPosixHookCommand('/Users/a/Library/Application Support/Orca/agent-hooks/x.sh')
+    const cmd = wrapPosixHookCommand(
+      '/Users/a/Library/Application Support/Orca/agent-hooks/x.sh',
+      {},
+      '/bin/sh'
+    )
     expect(cmd).toContain("'/Users/a/Library/Application Support/Orca/agent-hooks/x.sh'")
   })
 
@@ -373,16 +377,20 @@ describe('wrapPosixHookCommand', () => {
     // Why: POSIX single-quote escape renders ' as '\''. Verify a path with an
     // embedded quote does not break out of the quoting and instead reaches
     // /bin/sh as a single argument.
-    const cmd = wrapPosixHookCommand("/path/with'quote/x.sh")
+    const cmd = wrapPosixHookCommand("/path/with'quote/x.sh", {}, '/bin/sh')
     expect(cmd).toBe(
       "if [ -f '/path/with'\\''quote/x.sh' ] && [ -r '/path/with'\\''quote/x.sh' ] && [ -x '/path/with'\\''quote/x.sh' ]; then /bin/sh '/path/with'\\''quote/x.sh'; else cat >/dev/null 2>&1 || :; fi"
     )
   })
 
   it('can scope environment variables to the guarded script invocation', () => {
-    const cmd = wrapPosixHookCommand('/does/not/exist.sh', {
-      ORCA_COPILOT_HOOK_EVENT: 'UserPromptSubmit'
-    })
+    const cmd = wrapPosixHookCommand(
+      '/does/not/exist.sh',
+      {
+        ORCA_COPILOT_HOOK_EVENT: 'UserPromptSubmit'
+      },
+      '/bin/sh'
+    )
     expect(cmd).toBe(
       "if [ -f '/does/not/exist.sh' ] && [ -r '/does/not/exist.sh' ] && [ -x '/does/not/exist.sh' ]; then ORCA_COPILOT_HOOK_EVENT='UserPromptSubmit' /bin/sh '/does/not/exist.sh'; else cat >/dev/null 2>&1 || :; fi"
     )

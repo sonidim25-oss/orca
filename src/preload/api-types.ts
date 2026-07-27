@@ -355,6 +355,11 @@ import type {
   ReactErrorBoundaryReportResult
 } from '../shared/crash-reporting'
 import type { RendererHeapStatistics } from '../shared/renderer-heap-statistics'
+import type {
+  PromptAnalyzerAnalyzeArgs,
+  PromptAnalyzerAnalyzeResponse,
+  SupportedProvider
+} from '../shared/prompt-analyzer-types'
 
 export type {
   ShellOpenExternalEditorRequest,
@@ -2163,6 +2168,13 @@ export type PreloadApi = {
     previewWarpThemeImport: (source: WarpThemeImportSource) => Promise<WarpThemeImportPreview>
     /** Subscribe to out-of-band settings updates (e.g. View > Appearance toggles) to stay in sync with main. */
     onChanged: (callback: (updates: Partial<GlobalSettings>) => void) => () => void
+  }
+  promptAnalyzer: {
+    getApiKeyStatus: (provider?: SupportedProvider) => Promise<{ configured: boolean }>
+    analyze: (args: PromptAnalyzerAnalyzeArgs) => Promise<PromptAnalyzerAnalyzeResponse>
+    cancel: () => Promise<void>
+    saveApiKey: (apiKey: string, provider?: SupportedProvider) => Promise<{ configured: boolean }>
+    clearApiKey: (provider?: SupportedProvider) => Promise<{ configured: boolean }>
   }
   localhostWorktreeLabels: {
     register: (args: LocalhostWorktreeLabelRoute) => Promise<LocalhostWorktreeLabelResult>

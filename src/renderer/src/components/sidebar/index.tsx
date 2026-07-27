@@ -9,6 +9,7 @@ import WorktreeList from './WorktreeList'
 import SidebarToolbar from './SidebarToolbar'
 import WorkspaceKanbanDrawer from './WorkspaceKanbanDrawer'
 import { AgentDashboardDrawer } from '@/components/dashboard/AgentDashboardDrawer'
+import { PromptAnalyzerPanel } from './PromptAnalyzerPanel'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import { cn } from '@/lib/utils'
 import { FolderPlus, Loader2 } from 'lucide-react'
@@ -52,6 +53,8 @@ function Sidebar({
   const fetchAllWorktrees = useAppStore((s) => s.fetchAllWorktrees)
   const activeModal = useAppStore((s) => s.activeModal)
   const statusBarVisible = useAppStore((s) => s.statusBarVisible)
+  const isPanelOpen = useAppStore((s) => s.isPanelOpen)
+  const setPanelOpen = useAppStore((s) => s.setPanelOpen)
   const systemPrefersDark = useSystemPrefersDark()
   const leftSidebarStyle = useMemo(
     () => resolveLeftSidebarStyleVariables(settings, systemPrefersDark),
@@ -261,6 +264,10 @@ function Sidebar({
           statusBarVisible={statusBarVisible}
         />
       ) : null}
+      <PromptAnalyzerPanel
+        isOpen={isPanelOpen}
+        onClose={() => setPanelOpen(false)}
+      />
     </TooltipProvider>
   )
 }

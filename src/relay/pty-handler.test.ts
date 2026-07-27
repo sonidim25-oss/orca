@@ -40,6 +40,8 @@ import {
 } from './pty-handler'
 import type { RelayDispatcher } from './dispatcher'
 
+const hostPlatformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+
 type TestRequestContext = {
   isStale: () => boolean
   signal?: AbortSignal
@@ -118,6 +120,7 @@ describe('PtyHandler', () => {
   }
 
   beforeEach(() => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
     vi.useFakeTimers()
     mockPtySpawn.mockReset()
     mockPtyInstance.onData.mockReset()
@@ -134,10 +137,16 @@ describe('PtyHandler', () => {
   })
 
   afterEach(async () => {
-    const cleanup = handler.dispose({ waitForPhysicalExit: false })
-    await vi.runAllTimersAsync()
-    await cleanup.catch(() => {})
-    vi.useRealTimers()
+    try {
+      const cleanup = handler.dispose({ waitForPhysicalExit: false })
+      await vi.runAllTimersAsync()
+      await cleanup.catch(() => {})
+    } finally {
+      vi.useRealTimers()
+      if (hostPlatformDescriptor) {
+        Object.defineProperty(process, 'platform', hostPlatformDescriptor)
+      }
+    }
   })
 
   it('registers all expected handlers', () => {

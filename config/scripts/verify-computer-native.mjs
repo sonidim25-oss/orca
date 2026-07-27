@@ -116,10 +116,20 @@ function hasCommand(command) {
   if (existsSync(command)) {
     return true
   }
-  const result = spawnSync('/bin/sh', ['-lc', `command -v ${quoteShell(command)}`], {
+  const shell = resolvePosixShell()
+  if (!shell) {
+    return false
+  }
+  const result = spawnSync(shell, ['-lc', `command -v ${quoteShell(command)}`], {
     stdio: 'ignore'
   })
   return result.status === 0
+}
+
+function resolvePosixShell() {
+  return [process.env.SHELL, '/bin/sh', '/bin/bash', '/bin/zsh'].find(
+    (candidate) => candidate && existsSync(candidate)
+  )
 }
 
 function verifyMacOSHelperApp() {

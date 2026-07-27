@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- Why: daemon PTY spawning must keep platform launch setup, preflight, and lifecycle guards in one execution path. */
 import * as pty from 'node-pty'
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { delimiter, win32 as pathWin32 } from 'node:path'
 import type { SubprocessHandle } from './session'
 import { DaemonProtocolError } from './types'
@@ -371,8 +371,13 @@ function runSinglePtySpawnHealthProbe(): Promise<void> {
     : getDefaultCwd()
 
   let proc: pty.IPty
+  const shell = process.platform === 'win32' ? (process.env.COMSPEC ?? 'cmd.exe') : '/bin/sh'
   try {
-    proc = pty.spawn('/bin/sh', ['-c', 'exit 0'], {
+    if (process.platform !== 'win32' && !existsSync(shell)) {
+      throw new Error(`PTY health probe shell "${shell}" does not exist`)
+    }
+    const args = process.platform === 'win32' ? ['/c', 'exit 0'] : ['-c', 'exit 0']
+    proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: 2,
       rows: 1,
@@ -383,7 +388,7 @@ function runSinglePtySpawnHealthProbe(): Promise<void> {
       }
     })
   } catch (err) {
-    throw formatPtySpawnError(err, '/bin/sh', cwd)
+    throw formatPtySpawnError(err, shell, cwd)
   }
 
   return new Promise<void>((resolve, reject) => {

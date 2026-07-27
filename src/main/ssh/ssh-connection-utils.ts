@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { Duplex } from 'node:stream'
 import type { Socket as NetSocket } from 'node:net'
 import type { ConnectConfig } from 'ssh2'
@@ -270,6 +271,9 @@ function getShellSpawnConfig(command: string): { file: string; args: string[] } 
   if (process.platform === 'win32') {
     const comspec = process.env.ComSpec || 'cmd.exe'
     return { file: comspec, args: ['/d', '/s', '/c', command] }
+  }
+  if (!existsSync('/bin/sh')) {
+    throw new Error('Cannot run SSH ProxyCommand: "/bin/sh" does not exist')
   }
   return { file: '/bin/sh', args: ['-c', command] }
 }

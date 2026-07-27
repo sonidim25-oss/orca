@@ -20,7 +20,7 @@ export function registerTerminalRenderDesyncEvidenceHandler(): void {
   ipcMain.handle(
     'terminal:writeRenderDesyncEvidence',
     (event, args: WriteTerminalRenderDesyncEvidenceArgs) => {
-      if (!isTrustedUIRenderer(event.sender)) {
+      if (!isTrustedUIRenderer(event)) {
         throw new Error('Unauthorized render-desync evidence sender')
       }
       const write = evidenceWriteQueue.then(() =>

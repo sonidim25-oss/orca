@@ -31,12 +31,17 @@ const SETTINGS_CHANGED_WHITELIST_SET = new Set<string>(SETTINGS_CHANGED_WHITELIS
 
 type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
   terminalScrollbackBytes?: unknown
+  promptAnalyzerApiKey?: unknown
 }
 
 function sanitizeRendererSettingsUpdate(args: Partial<GlobalSettings>): Partial<GlobalSettings> {
-  const { terminalScrollbackBytes: _legacyScrollbackBytes, ...sanitizedArgs } =
-    args as LegacyTerminalScrollbackSettingsUpdate
+  const {
+    terminalScrollbackBytes: _legacyScrollbackBytes,
+    promptAnalyzerApiKey: _promptAnalyzerApiKey,
+    ...sanitizedArgs
+  } = args as LegacyTerminalScrollbackSettingsUpdate
   void _legacyScrollbackBytes
+  void _promptAnalyzerApiKey
   return sanitizedArgs
 }
 

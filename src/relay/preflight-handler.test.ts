@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
 
-const { execFileAsyncMock } = vi.hoisted(() => ({
-  execFileAsyncMock: vi.fn()
+const { execFileAsyncMock, existsSyncMock } = vi.hoisted(() => ({
+  execFileAsyncMock: vi.fn(),
+  existsSyncMock: vi.fn((_candidate: string) => true)
 }))
 
 const { isPwshAvailableMock, isWslAvailableMock, listWslDistrosMock, isGitBashAvailableMock } =
@@ -19,6 +20,7 @@ vi.mock('child_process', () => {
   })
   return { execFile: execFileWithPromisify }
 })
+vi.mock('node:fs', () => ({ existsSync: existsSyncMock }))
 
 vi.mock('../main/pwsh', () => ({ isPwshAvailable: isPwshAvailableMock }))
 vi.mock('../main/wsl', () => ({
@@ -61,6 +63,8 @@ function fishLookupArgs(command: string): string[] {
 
 beforeEach(() => {
   execFileAsyncMock.mockReset()
+  existsSyncMock.mockReset()
+  existsSyncMock.mockReturnValue(true)
   isPwshAvailableMock.mockReset()
   isWslAvailableMock.mockReset()
   listWslDistrosMock.mockReset()
@@ -81,6 +85,14 @@ describe('buildCommandLookupSpec', () => {
       file: '/bin/sh',
       args: lookupArgs('codex')
     })
+  })
+
+  it('rejects POSIX probes when no shell exists', () => {
+    existsSyncMock.mockReturnValue(false)
+
+    expect(() => buildCommandLookupSpec('codex', 'linux', {}, null)).toThrow(
+      'No shell available for POSIX command lookup'
+    )
   })
 
   it('uses the configured remote shell for POSIX probes', () => {
@@ -146,6 +158,14 @@ describe('buildCommandLookupSpecs', () => {
     expect(
       buildCommandLookupSpecs('codex', 'linux', { SHELL: '/home/test/bin/bash' }, '/bin/bash')
     ).toEqual([{ file: '/bin/sh', args: lookupArgs('codex') }])
+  })
+
+  it('uses the first existing validated fallback when sh is missing', () => {
+    existsSyncMock.mockImplementation((candidate) => candidate === '/bin/bash')
+
+    expect(buildCommandLookupSpecs('codex', 'linux', {}, null)).toEqual([
+      { file: '/bin/bash', args: lookupArgs('codex', '-ilc') }
+    ])
   })
 })
 

@@ -62,7 +62,9 @@ function withoutOrcaEnvironment(extra = {}) {
 
 function runShell(command, payload, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn('/bin/sh', ['-c', command], {
+    const shell = process.platform === 'win32' ? process.env.COMSPEC || 'cmd.exe' : '/bin/sh'
+    const args = process.platform === 'win32' ? ['/c', command] : ['-c', command]
+    const child = spawn(shell, args, {
       env,
       stdio: ['pipe', 'pipe', 'pipe']
     })

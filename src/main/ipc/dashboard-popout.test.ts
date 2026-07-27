@@ -25,7 +25,7 @@ const {
     closePopoutMock: vi.fn(),
     getPopoutMock: vi.fn((): unknown => null),
     isPopoutRendererMock: vi.fn((_sender: unknown) => false),
-    isTrustedUIRendererMock: vi.fn((_sender: unknown) => false),
+    isTrustedUIRendererMock: vi.fn((_event: { sender: unknown }) => false),
     getTrustedWindowMock: vi.fn((): unknown => null),
     sendToTrustedMock: vi.fn(),
     safelyRevealMock: vi.fn()
@@ -85,7 +85,7 @@ describe('registerDashboardPopoutHandlers', () => {
   beforeEach(() => {
     handlers.clear()
     store = makeStore()
-    isTrustedUIRendererMock.mockImplementation((sender) => sender === mainSender)
+    isTrustedUIRendererMock.mockImplementation((event) => event.sender === mainSender)
     isPopoutRendererMock.mockImplementation((sender) => sender === popoutSender)
     registerDashboardPopoutHandlers(store as never)
   })

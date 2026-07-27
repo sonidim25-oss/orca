@@ -1,0 +1,398 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { create } from 'zustand'
+import { createPromptAnalyzerSlice } from './prompt-analyzer'
+import type { AppState } from '../types'
+import type { PromptAnalyzerConfig } from '@/prompt-analyzer'
+
+const INVALID_CONFIG_ERROR =
+  'Prompt analyzer config requires a supported provider, non-empty model, temperature between 0 and 2, and maxTokens between 1 and 32768'
+
+function createTestStore() {
+  return create<AppState>()(
+    (...a) =>
+      ({
+        ...createPromptAnalyzerSlice(...a)
+      }) as AppState
+  )
+}
+
+describe('PromptAnalyzerSlice', () => {
+  let store: ReturnType<typeof createTestStore>
+
+  beforeEach(() => {
+    vi.stubGlobal('window', {
+      api: {
+        promptAnalyzer: {
+          analyze: vi.fn(),
+          cancel: vi.fn().mockResolvedValue(undefined)
+        }
+      }
+    })
+    store = createTestStore()
+  })
+
+  it('1. Initial state', () => {
+    const state = store.getState()
+    expect(state.isPanelOpen).toBe(false)
+    expect(state.hasWarned).toBe(false)
+    expect(state.state).toBe('idle')
+    expect(state.originalPrompt).toBe('')
+    expect(state.improvedPrompt).toBe('')
+    expect(state.error).toBeNull()
+    expect(state.config).toBeNull()
+  })
+
+  it('2. togglePanel flips isPanelOpen', () => {
+    store.getState().togglePanel()
+    expect(store.getState().isPanelOpen).toBe(true)
+
+    store.setState({
+      state: 'success',
+      originalPrompt: 'test prompt',
+      improvedPrompt: 'improved',
+      error: 'some error'
+    })
+
+    store.getState().togglePanel()
+    const state = store.getState()
+    expect(state.isPanelOpen).toBe(false)
+    expect(state.state).toBe('idle')
+    expect(state.originalPrompt).toBe('')
+    expect(state.improvedPrompt).toBe('')
+    expect(state.error).toBeNull()
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('cancels the active request when setPanelOpen closes the panel', () => {
+    store.getState().setPanelOpen(true)
+
+    store.getState().setPanelOpen(false)
+
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('3. updatePrompt and dismissResult own their complete transitions', () => {
+    store.setState({
+      state: 'success',
+      originalPrompt: 'orig',
+      improvedPrompt: 'improved',
+      error: null
+    })
+
+    store.getState().updatePrompt('edited')
+    expect(store.getState()).toMatchObject({
+      state: 'idle',
+      originalPrompt: 'edited',
+      improvedPrompt: ''
+    })
+
+    store.setState({ state: 'success', improvedPrompt: 'improved' })
+    store.getState().dismissResult()
+    expect(store.getState()).toMatchObject({
+      state: 'idle',
+      originalPrompt: 'edited',
+      improvedPrompt: '',
+      error: null
+    })
+  })
+
+  it('5. setHasWarned tracks the session warning', () => {
+    store.getState().setHasWarned(true)
+    expect(store.getState().hasWarned).toBe(true)
+  })
+
+  it('6. setConfig partial merge', () => {
+    const initialConfig: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4',
+      maxTokens: 100,
+      temperature: 0.5
+    }
+
+    store.getState().setConfig(initialConfig)
+    expect(store.getState().config).toEqual(initialConfig)
+
+    store.getState().setConfig({ temperature: 0.7 })
+    expect(store.getState().config?.temperature).toBe(0.7)
+    expect(store.getState().config?.provider).toBe('openrouter')
+
+    store.getState().setConfig(null)
+    expect(store.getState().config).toBeNull()
+  })
+
+  it('7. setConfig rejects a partial config when config is null', () => {
+    expect(() => store.getState().setConfig({ temperature: 0.7 })).toThrowError(
+      INVALID_CONFIG_ERROR
+    )
+
+    expect(store.getState().config).toBeNull()
+  })
+
+  it('8. setConfig rejects invalid values', () => {
+    const validConfig: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4',
+      maxTokens: 100,
+      temperature: 0.5
+    }
+    const invalidUpdates: Partial<PromptAnalyzerConfig>[] = [
+      { model: '' },
+      { model: '   ' },
+      { temperature: -0.1 },
+      { temperature: 2.1 },
+      { temperature: Number.NaN },
+      { maxTokens: 0 },
+      { maxTokens: -1 },
+      { maxTokens: 1.5 },
+      { maxTokens: 32_769 },
+      { maxTokens: Number.POSITIVE_INFINITY }
+    ]
+
+    for (const update of invalidUpdates) {
+      expect(() => store.getState().setConfig({ ...validConfig, ...update })).toThrowError(
+        INVALID_CONFIG_ERROR
+      )
+      expect(store.getState().config).toBeNull()
+    }
+
+    store.getState().setConfig(validConfig)
+    for (const update of invalidUpdates) {
+      expect(() => store.getState().setConfig(update)).toThrowError(INVALID_CONFIG_ERROR)
+      expect(store.getState().config).toEqual(validConfig)
+    }
+  })
+
+  it('9. setConfig accepts temperature boundaries', () => {
+    const config: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4',
+      maxTokens: 1,
+      temperature: 0
+    }
+
+    store.getState().setConfig(config)
+    expect(store.getState().config).toEqual(config)
+
+    store.getState().setConfig({ temperature: 2 })
+    expect(store.getState().config?.temperature).toBe(2)
+  })
+
+  it('accepts maxTokens boundaries', () => {
+    const config: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4',
+      maxTokens: 1,
+      temperature: 0.5
+    }
+
+    store.getState().setConfig(config)
+    expect(store.getState().config?.maxTokens).toBe(1)
+
+    store.getState().setConfig({ maxTokens: 32_768 })
+    expect(store.getState().config?.maxTokens).toBe(32_768)
+  })
+
+  it('10. setModel', () => {
+    const initialConfig: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'anthropic/old-model',
+      maxTokens: 100,
+      temperature: 0.5
+    }
+    store.getState().setConfig(initialConfig)
+
+    store.getState().setModel('new-model')
+    expect(store.getState().config?.model).toBe('new-model')
+  })
+
+  it('11. setModel rejects invalid updates', () => {
+    expect(() => store.getState().setModel('new-model')).toThrowError(INVALID_CONFIG_ERROR)
+
+    expect(store.getState().config).toBeNull()
+
+    const config: PromptAnalyzerConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4',
+      maxTokens: 100,
+      temperature: 0.5
+    }
+    store.getState().setConfig(config)
+
+    expect(() => store.getState().setModel('')).toThrowError(INVALID_CONFIG_ERROR)
+    expect(() => store.getState().setModel('   ')).toThrowError(INVALID_CONFIG_ERROR)
+    expect(store.getState().config).toEqual(config)
+  })
+
+  it('12. reset returns to initial state', () => {
+    store.getState().togglePanel()
+    store.getState().setHasWarned(true)
+    store.setState({ state: 'processing', requestId: 7 })
+    store.getState().setConfig({
+      provider: 'openrouter',
+      model: 'openai/y',
+      maxTokens: 1,
+      temperature: 1
+    })
+
+    store.getState().reset()
+
+    const state = store.getState()
+    expect(state.isPanelOpen).toBe(false)
+    expect(state.hasWarned).toBe(false)
+    expect(state.state).toBe('idle')
+    expect(state.originalPrompt).toBe('')
+    expect(state.improvedPrompt).toBe('')
+    expect(state.error).toBeNull()
+    expect(state.config).toBeNull()
+    expect(state.requestId).toBe(8)
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('owns processing and success transitions for analysis', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+
+    const result = await store.getState().analyzePrompt('Original', { model: 'test-model' })
+
+    expect(result?.improvedPrompt).toBe('Better')
+    expect(store.getState()).toMatchObject({
+      state: 'success',
+      originalPrompt: 'Original',
+      improvedPrompt: 'Better',
+      error: null,
+      requestId: 1
+    })
+  })
+
+  it('owns empty-response failure without publishing success', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: '', improvedPrompt: '   ', reasoning: '' }
+    })
+
+    await expect(
+      store.getState().analyzePrompt('Original', { model: 'test-model' })
+    ).rejects.toThrow('Empty response from model')
+
+    expect(store.getState()).toMatchObject({
+      state: 'error',
+      originalPrompt: 'Original',
+      improvedPrompt: '',
+      error: 'Empty response from model'
+    })
+  })
+
+  it('owns validation and error transitions without invoking analysis', async () => {
+    await expect(store.getState().analyzePrompt('Original')).rejects.toThrow(
+      'Prompt analyzer model is not configured. Set a model in Settings.'
+    )
+
+    expect(window.api.promptAnalyzer.analyze).not.toHaveBeenCalled()
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+    expect(store.getState()).toMatchObject({
+      state: 'error',
+      error: 'Prompt analyzer model is not configured. Set a model in Settings.',
+      requestId: 1
+    })
+  })
+
+  it.each([
+    [
+      'negative max tokens',
+      { maxTokens: -1 },
+      'Prompt analyzer max tokens must be between 1 and 32768'
+    ],
+    [
+      'fractional max tokens',
+      { maxTokens: 1.5 },
+      'Prompt analyzer max tokens must be between 1 and 32768'
+    ],
+    [
+      'excessive max tokens',
+      { maxTokens: 32_769 },
+      'Prompt analyzer max tokens must be between 1 and 32768'
+    ],
+    [
+      'negative temperature',
+      { temperature: -0.1 },
+      'Prompt analyzer temperature must be between 0 and 2'
+    ],
+    [
+      'non-finite temperature',
+      { temperature: Number.NaN },
+      'Prompt analyzer temperature must be between 0 and 2'
+    ],
+    [
+      'excessive temperature',
+      { temperature: 2.1 },
+      'Prompt analyzer temperature must be between 0 and 2'
+    ]
+  ])('rejects %s before invoking main', async (_case, options, message) => {
+    await expect(
+      store.getState().analyzePrompt('Original', { model: 'test-model', ...options })
+    ).rejects.toThrow(message)
+
+    expect(window.api.promptAnalyzer.analyze).not.toHaveBeenCalled()
+    expect(store.getState()).toMatchObject({ state: 'error', error: message })
+  })
+
+  it('invalidates an active request before reporting newer invalid configuration', async () => {
+    let resolveAnalyze!: (
+      response: Awaited<ReturnType<typeof window.api.promptAnalyzer.analyze>>
+    ) => void
+    vi.mocked(window.api.promptAnalyzer.analyze).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveAnalyze = resolve
+      })
+    )
+
+    const activeRequest = store.getState().analyzePrompt('First prompt', { model: 'test-model' })
+    await expect(store.getState().analyzePrompt('Second prompt')).rejects.toThrow(
+      'Prompt analyzer model is not configured. Set a model in Settings.'
+    )
+    resolveAnalyze({
+      ok: true,
+      result: { suggestion: 'Stale', improvedPrompt: 'Stale', reasoning: '' }
+    })
+
+    await expect(activeRequest).resolves.toBeNull()
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+    expect(store.getState()).toMatchObject({
+      state: 'error',
+      improvedPrompt: '',
+      requestId: 2
+    })
+  })
+
+  it('does not let a closed-panel request repopulate lifecycle state', async () => {
+    let resolveAnalyze!: (
+      response: Awaited<ReturnType<typeof window.api.promptAnalyzer.analyze>>
+    ) => void
+    vi.mocked(window.api.promptAnalyzer.analyze).mockReturnValue(
+      new Promise((resolve) => {
+        resolveAnalyze = resolve
+      })
+    )
+    store.getState().setPanelOpen(true)
+
+    const analysis = store.getState().analyzePrompt('Original', { model: 'test-model' })
+    expect(store.getState().state).toBe('processing')
+
+    store.getState().setPanelOpen(false)
+    resolveAnalyze({
+      ok: true,
+      result: { suggestion: 'Stale', improvedPrompt: 'Stale', reasoning: '' }
+    })
+
+    await expect(analysis).resolves.toBeNull()
+    expect(store.getState()).toMatchObject({
+      state: 'idle',
+      originalPrompt: '',
+      improvedPrompt: '',
+      error: null
+    })
+    expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
+  })
+})

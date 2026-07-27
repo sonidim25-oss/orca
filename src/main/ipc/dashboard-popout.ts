@@ -53,7 +53,7 @@ export function registerDashboardPopoutHandlers(
   })
 
   ipcMain.handle('dashboardPopout:open', (event): void => {
-    if (!isTrustedUIRenderer(event.sender) || !isDashboardEnabled(store)) {
+    if (!isTrustedUIRenderer(event) || !isDashboardEnabled(store)) {
       return
     }
     createOrFocusDashboardPopout(store, undefined, {
@@ -64,7 +64,7 @@ export function registerDashboardPopoutHandlers(
   // Relay: the main renderer publishes derived snapshots; forward to the popout.
   ipcMain.handle('dashboard:publishSnapshot', (event, snapshot: unknown): void => {
     if (
-      !isTrustedUIRenderer(event.sender) ||
+      !isTrustedUIRenderer(event) ||
       !isDashboardEnabled(store) ||
       !isDashboardSnapshot(snapshot)
     ) {
@@ -87,7 +87,7 @@ export function registerDashboardPopoutHandlers(
   })
 
   ipcMain.handle('dashboard:getPopoutOpen', (event): boolean =>
-    isTrustedUIRenderer(event.sender) && isDashboardEnabled(store)
+    isTrustedUIRenderer(event) && isDashboardEnabled(store)
       ? getDashboardPopoutWindow() !== null
       : false
   )

@@ -105,6 +105,11 @@ import type {
   RuntimeMobileMarkdownResponse
 } from '../shared/mobile-markdown-document'
 import type {
+  PromptAnalyzerAnalyzeArgs,
+  PromptAnalyzerAnalyzeResponse,
+  SupportedProvider
+} from '../shared/prompt-analyzer-types'
+import type {
   CodexRateLimitResetResult,
   GrokAccountStatus,
   RateLimitRuntimeTarget,
@@ -1880,6 +1885,18 @@ const api = {
       ipcRenderer.on('settings:changed', listener)
       return () => ipcRenderer.removeListener('settings:changed', listener)
     }
+  },
+
+  promptAnalyzer: {
+    getApiKeyStatus: (provider?: SupportedProvider): Promise<{ configured: boolean }> =>
+      ipcRenderer.invoke('promptAnalyzer:getApiKeyStatus', provider ?? 'openrouter'),
+    analyze: (args: PromptAnalyzerAnalyzeArgs): Promise<PromptAnalyzerAnalyzeResponse> =>
+      ipcRenderer.invoke('promptAnalyzer:analyze', args),
+    cancel: (): Promise<void> => ipcRenderer.invoke('promptAnalyzer:cancel'),
+    saveApiKey: (apiKey: string, provider?: SupportedProvider): Promise<{ configured: boolean }> =>
+      ipcRenderer.invoke('promptAnalyzer:saveApiKey', provider ?? 'openrouter', apiKey),
+    clearApiKey: (provider?: SupportedProvider): Promise<{ configured: boolean }> =>
+      ipcRenderer.invoke('promptAnalyzer:clearApiKey', provider ?? 'openrouter')
   },
 
   localhostWorktreeLabels: {

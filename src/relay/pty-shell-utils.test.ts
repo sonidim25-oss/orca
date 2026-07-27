@@ -16,6 +16,7 @@ import {
   getForegroundProcessName,
   isProcessAlive,
   resolveDefaultCwd,
+  resolveDefaultShell,
   resolveWindowsDefaultShell
 } from './pty-shell-utils'
 
@@ -245,6 +246,22 @@ describe('resolveWindowsDefaultShell', () => {
         () => ''
       )
     ).toBe('C:\\Windows\\System32\\cmd.exe')
+  })
+})
+
+describe('resolveDefaultShell', () => {
+  it('uses the first existing Unix shell candidate', () => {
+    expect(
+      resolveDefaultShell({ SHELL: '/missing/custom-shell' }, 'linux', (candidate) => {
+        return candidate === '/bin/zsh'
+      })
+    ).toBe('/bin/zsh')
+  })
+
+  it('throws instead of returning a missing Unix shell', () => {
+    expect(() =>
+      resolveDefaultShell({ SHELL: '/missing/custom-shell' }, 'linux', () => false)
+    ).toThrow('No Unix shell found (tried: /missing/custom-shell, /bin/bash, /bin/zsh, /bin/sh)')
   })
 })
 

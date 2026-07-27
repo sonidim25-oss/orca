@@ -35,7 +35,9 @@ describe('resolveExternalEditorLaunchSpec', () => {
   it('appends escaped paths to compound macOS open commands', () => {
     expect(
       resolveExternalEditorLaunchSpec('open -a "Typora"', "/tmp/note's.md", {
-        platform: 'darwin'
+        platform: 'darwin',
+        env: {},
+        fileExists: (candidate) => candidate === '/bin/sh'
       })
     ).toEqual({
       kind: 'shell',
@@ -64,12 +66,13 @@ describe('resolveExternalEditorLaunchSpec', () => {
     expect(
       resolveExternalEditorLaunchSpec('/usr/local/bin/code --reuse-window', '/tmp/workspace', {
         platform: 'darwin',
+        env: {},
         fileExists: () => false
       })
     ).toEqual({
       kind: 'shell',
       hideWindowsConsole: true,
-      spawnCmd: '/bin/sh',
+      spawnCmd: '/bin/bash',
       spawnArgs: ['-c', '/usr/local/bin/code --reuse-window /tmp/workspace']
     })
   })

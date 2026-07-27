@@ -24,7 +24,9 @@ function getExistingSpawnHelper(): string {
 }
 
 async function spawnExitingPty(index: number): Promise<void> {
-  const proc = pty.spawn('/bin/sh', ['-c', 'exit 0'], {
+  const shell = process.platform === 'win32' ? process.env.COMSPEC ?? 'cmd.exe' : '/bin/sh'
+  const args = process.platform === 'win32' ? ['/c', 'exit 0'] : ['-c', 'exit 0']
+  const proc = pty.spawn(shell, args, {
     name: 'xterm-256color',
     cols: 80,
     rows: 24,
@@ -69,8 +71,10 @@ describeOnDarwin('node-pty macOS spawn fd handling', () => {
     process.on('exit', restoreHelper)
     try {
       for (let i = 0; i < 20; i++) {
+        const shell = process.platform === 'win32' ? process.env.COMSPEC ?? 'cmd.exe' : '/bin/sh'
+        const args = process.platform === 'win32' ? ['/c', 'exit 0'] : ['-c', 'exit 0']
         expect(() =>
-          pty.spawn('/bin/sh', ['-c', 'exit 0'], {
+          pty.spawn(shell, args, {
             name: 'xterm-256color',
             cols: 80,
             rows: 24,

@@ -212,6 +212,9 @@ function readSelectedInputSourceIdFromJson(stdout: string): string | null {
 }
 
 async function readSelectedKeyboardInputSourceId(): Promise<string | null> {
+  if (!existsSync('/bin/sh')) {
+    return null
+  }
   try {
     const stdout = await readCommandStdout(
       '/bin/sh',

@@ -53,15 +53,19 @@ function makeStore() {
 
 function makeUIEvent(senderOverrides: Record<string, unknown> = {}): {
   sender: Record<string, unknown>
+  senderFrame: Record<string, unknown>
 } {
+  const mainFrame = {}
   return {
     sender: {
       id: 17,
       getType: () => 'window',
       getURL: () => 'file:///orca/index.html',
       isDestroyed: () => false,
+      mainFrame,
       ...senderOverrides
-    }
+    },
+    senderFrame: mainFrame
   }
 }
 
@@ -198,6 +202,23 @@ describe('UI IPC', () => {
     const nativePasteHandler = getNativePasteHandler()
     nativePasteHandler?.(makeUIEvent({ id: 42 }))
     nativePasteHandler?.(makeUIEvent({ getType: () => 'webview' }))
+
+    expect(fromWebContentsMock).not.toHaveBeenCalled()
+    expect(paste).not.toHaveBeenCalled()
+    expect(pasteAndMatchStyle).not.toHaveBeenCalled()
+  })
+
+  it('ignores native paste fallback from child frames in the trusted renderer', () => {
+    const paste = vi.fn()
+    const pasteAndMatchStyle = vi.fn()
+    const event = makeUIEvent()
+    event.senderFrame = {}
+    setTrustedUIRendererWebContentsId(17)
+    fromWebContentsMock.mockReturnValue({ webContents: { paste, pasteAndMatchStyle } })
+
+    registerUIHandlers(makeStore() as never)
+
+    getNativePasteHandler()?.(event)
 
     expect(fromWebContentsMock).not.toHaveBeenCalled()
     expect(paste).not.toHaveBeenCalled()

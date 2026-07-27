@@ -56,7 +56,8 @@ itOnPosix(
   'reaps a foreground job that ignores terminal shutdown signals',
   async () => {
     const token = `ORCA_PTY_GROUP_TEST_${process.pid}_${Date.now()}`
-    const proc = pty.spawn('/bin/sh', [], {
+    const shell = process.platform === 'win32' ? process.env.COMSPEC ?? 'cmd.exe' : '/bin/sh'
+    const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,

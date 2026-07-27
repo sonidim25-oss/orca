@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, webContents, type WebContents } from 'electron'
+import { BrowserWindow, ipcMain, webContents, type IpcMainEvent, type WebContents } from 'electron'
 import type { Store } from '../persistence'
 import type { PersistedUIState } from '../../shared/types'
 import { isFeatureInteractionId } from '../../shared/feature-interactions'
@@ -73,7 +73,7 @@ export function registerUIHandlers(store: Store): void {
 
   ipcMain.removeAllListeners('ui:performNativePaste')
   ipcMain.on('ui:performNativePaste', (event, options?: { mode?: unknown }) => {
-    if (!isTrustedUIRenderer(event.sender)) {
+    if (!isTrustedUIRenderer(event)) {
       return
     }
     // Why: coordinated renderer paste falls back here only after no Orca owner
@@ -87,8 +87,12 @@ export function registerUIHandlers(store: Store): void {
   })
 }
 
-export function isTrustedUIRenderer(sender: WebContents): boolean {
+export function isTrustedUIRenderer(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>): boolean {
+  const { sender, senderFrame } = event
   if (sender.isDestroyed() || sender.getType() !== 'window') {
+    return false
+  }
+  if (!senderFrame || senderFrame !== sender.mainFrame) {
     return false
   }
   if (trustedUIRendererWebContentsId != null) {

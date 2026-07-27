@@ -1,4 +1,4 @@
-import { ipcMain, type WebContents } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type {
   TerminalPreviewConnectResult,
   TerminalPreviewSnapshot
@@ -20,8 +20,10 @@ function isValidPtyId(value: unknown): value is string {
 // Why: the preview dialog has two hosts — the pop-out window and the main
 // renderer's in-window overlay. The trusted UI renderer already has full PTY
 // access through the regular terminal channels, so admitting it adds no reach.
-function isTerminalPreviewRenderer(sender: WebContents): boolean {
-  return isDashboardPopoutRenderer(sender) || isTrustedUIRenderer(sender)
+function isTerminalPreviewRenderer(
+  event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>
+): boolean {
+  return isDashboardPopoutRenderer(event.sender) || isTrustedUIRenderer(event)
 }
 /** Pop-out terminal transport with an atomic snapshot/live boundary. */
 export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): void {
@@ -90,7 +92,7 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
       event,
       args: { ptyId?: unknown; opts?: { scrollbackRows?: unknown } }
     ): Promise<TerminalPreviewConnectResult> => {
-      if (!isTerminalPreviewRenderer(event.sender) || !isValidPtyId(args?.ptyId)) {
+      if (!isTerminalPreviewRenderer(event) || !isValidPtyId(args?.ptyId)) {
         return { snapshot: null, replay: [] }
       }
       const ptyId = args.ptyId
@@ -166,7 +168,7 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
     'terminalPreview:input',
     (event, args: { ptyId?: unknown; data?: unknown }): Promise<boolean> => {
       if (
-        !isTerminalPreviewRenderer(event.sender) ||
+        !isTerminalPreviewRenderer(event) ||
         !isValidPtyId(args?.ptyId) ||
         typeof args.data !== 'string'
       ) {
@@ -180,7 +182,7 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
     'terminalPreview:ack',
     (event, args: { ptyId?: unknown; bytes?: unknown }): void => {
       if (
-        !isTerminalPreviewRenderer(event.sender) ||
+        !isTerminalPreviewRenderer(event) ||
         !isValidPtyId(args?.ptyId) ||
         typeof args.bytes !== 'number' ||
         !Number.isFinite(args.bytes) ||
@@ -204,7 +206,7 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
       args: { ptyId?: unknown; cols?: unknown; rows?: unknown }
     ): Promise<{ cols: number; rows: number } | null> => {
       if (
-        !isTerminalPreviewRenderer(event.sender) ||
+        !isTerminalPreviewRenderer(event) ||
         !isValidPtyId(args?.ptyId) ||
         typeof args.cols !== 'number' ||
         typeof args.rows !== 'number' ||
@@ -251,7 +253,7 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
   )
 
   ipcMain.handle('terminalPreview:unsubscribe', (event, args: { ptyId?: unknown }): void => {
-    if (!isTerminalPreviewRenderer(event.sender) || !isValidPtyId(args?.ptyId)) {
+    if (!isTerminalPreviewRenderer(event) || !isValidPtyId(args?.ptyId)) {
       return
     }
     subscriptionsByContents.get(event.sender.id)?.get(args.ptyId)?.dispose()

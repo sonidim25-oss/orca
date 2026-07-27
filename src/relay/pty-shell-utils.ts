@@ -85,22 +85,28 @@ export function resolveWindowsDefaultShell(
  * Resolve the default shell for PTY spawning.
  * Prefers $SHELL, then common fallbacks.
  */
-export function resolveDefaultShell(): string {
-  if (process.platform === 'win32') {
-    return resolveWindowsDefaultShell()
+export function resolveDefaultShell(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  existsPath: (path: string) => boolean = existsSync
+): string {
+  if (platform === 'win32') {
+    return resolveWindowsDefaultShell(env, existsPath)
   }
 
-  const envShell = process.env.SHELL
-  if (envShell && existsSync(envShell)) {
+  const envShell = env.SHELL
+  if (envShell && existsPath(envShell)) {
     return envShell
   }
 
   for (const candidate of ['/bin/bash', '/bin/zsh', '/bin/sh']) {
-    if (existsSync(candidate)) {
+    if (existsPath(candidate)) {
       return candidate
     }
   }
-  return '/bin/sh'
+
+  const candidates = [envShell, '/bin/bash', '/bin/zsh', '/bin/sh'].filter(Boolean)
+  throw new Error(`No Unix shell found (tried: ${candidates.join(', ')})`)
 }
 
 export function resolveDefaultCwd(

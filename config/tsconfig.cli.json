@@ -8,6 +8,7 @@
     "../src/main/agent-hooks/hook-config-write-path.ts",
     "../src/main/agent-hooks/hooks-json-read.ts",
     "../src/main/agent-hooks/installer-utils.ts",
+    "../src/main/agent-hooks/posix-hook-shell-path.ts",
     "../src/main/agent-hooks/installer-utils-remote.ts",
     "../src/main/agent-hooks/managed-agent-hook-controls.ts",
     "../src/main/amp/hook-service.ts",

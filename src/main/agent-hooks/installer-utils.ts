@@ -15,6 +15,7 @@ import type { AgentHookSource } from '../../shared/agent-hook-relay'
 import { grantDirAcl, isPermissionError } from '../win32-utils'
 import { POSIX_HOOK_STDIN_DRAIN_COMMAND } from './hook-stdin-contract'
 import { resolveHooksJsonWritePath } from './hook-config-write-path'
+import { resolvePosixHookShellPath } from './posix-hook-shell-path'
 import { writeRollingFileBackup } from '../rolling-file-backup'
 
 export type HookCommandConfig = {
@@ -109,13 +110,18 @@ function quotePosixShellString(value: string): string {
 }
 
 // Why: guard for a readable executable so a stale entry at a missing script becomes a silent no-op, not an exit-127 failure on every tool call.
-export function wrapPosixHookCommand(scriptPath: string, env: Record<string, string> = {}): string {
+export function wrapPosixHookCommand(
+  scriptPath: string,
+  env: Record<string, string> = {},
+  resolvedShellPath?: string
+): string {
   // Why: single-quote escape so $, `, ", \ in scriptPath stay literal — avoids shell injection from an arbitrary path.
   const quoted = quotePosixShellString(scriptPath)
   const envPrefix = Object.entries(env)
     .map(([key, value]) => `${key}='${value.replaceAll("'", "'\\''")}'`)
     .join(' ')
-  const invocation = envPrefix ? `${envPrefix} /bin/sh ${quoted}` : `/bin/sh ${quoted}`
+  const shell = resolvedShellPath ?? resolvePosixHookShellPath()
+  const invocation = envPrefix ? `${envPrefix} ${shell} ${quoted}` : `${shell} ${quoted}`
   return `if [ -f ${quoted} ] && [ -r ${quoted} ] && [ -x ${quoted} ]; then ${invocation}; else ${POSIX_HOOK_STDIN_DRAIN_COMMAND}; fi`
 }
 

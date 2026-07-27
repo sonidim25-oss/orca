@@ -52,6 +52,7 @@ import { registerUIHandlers, setTrustedUIRendererWebContentsId } from './ui'
 import { registerEmulatorFrameStreamHandlers } from './emulator-frame-stream'
 import { registerEmulatorVideoStreamHandlers } from './emulator-video-stream'
 import { registerSpeechHandlers } from './speech'
+import { registerPromptAnalyzerHandlers } from './prompt-analyzer'
 import { registerTerminalRenderDesyncEvidenceHandler } from './terminal-render-desync-evidence'
 import { registerOrcaProfileHandlers } from './orca-profiles'
 import { registerCodexAccountHandlers } from './codex-accounts'
@@ -216,4 +217,5 @@ export function registerCoreHandlers(
   registerClipboardHandlers(store)
   registerUpdaterHandlers(store)
   registerSpeechHandlers(store)
+  registerPromptAnalyzerHandlers(store)
 }

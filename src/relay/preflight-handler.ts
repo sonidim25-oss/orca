@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { promisify } from 'node:util'
 import path, { win32 } from 'node:path'
@@ -8,6 +9,7 @@ import { isPwshAvailable } from '../main/pwsh'
 import { isWslAvailable, listWslDistros } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
+import { findExistingPosixShellPath } from '../shared/posix-shell-path'
 
 const execFileAsync = promisify(execFile)
 
@@ -138,7 +140,10 @@ export function buildCommandLookupSpec(
   accountLoginShell?: string | null
 ): CommandLookupSpec {
   const [spec] = buildCommandLookupSpecs(command, platform, env, accountLoginShell)
-  return spec ?? buildPosixCommandLookupSpec(command, '/bin/sh')
+  if (!spec) {
+    throw new Error('No shell available for POSIX command lookup')
+  }
+  return spec
 }
 
 export function buildCommandLookupSpecs(
@@ -160,9 +165,9 @@ export function buildCommandLookupSpecs(
     specs.push(buildPosixCommandLookupSpec(command, trustedShell))
   }
 
-  const inheritedPathSpec = buildPosixCommandLookupSpec(command, '/bin/sh')
-  if (!trustedShell || trustedShell !== inheritedPathSpec.file) {
-    specs.push(inheritedPathSpec)
+  const fallbackShell = findExistingPosixShellPath(['/bin/sh', '/bin/bash', '/bin/zsh'])
+  if (fallbackShell && trustedShell !== fallbackShell) {
+    specs.push(buildPosixCommandLookupSpec(command, fallbackShell))
   }
 
   return specs
@@ -261,7 +266,7 @@ function pickTrustedPosixShell(
   accountLoginShell: string | null
 ): string | null {
   const shell = env.SHELL
-  if (!shell || !path.posix.isAbsolute(shell)) {
+  if (!shell || !path.posix.isAbsolute(shell) || !existsSync(shell)) {
     return null
   }
   const shellName = path.posix.basename(shell).toLowerCase()

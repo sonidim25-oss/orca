@@ -146,7 +146,9 @@ describe('CommandCodeHookService', () => {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
       const address = server.address() as AddressInfo
       const scriptPath = join(homeDir, '.orca', 'agent-hooks', 'command-code-hook.sh')
-      const child = spawn('/bin/sh', [scriptPath], {
+      const shell = process.platform === 'win32' ? process.env.COMSPEC || 'cmd.exe' : '/bin/sh'
+      const args = process.platform === 'win32' ? ['/c', scriptPath] : [scriptPath]
+      const child = spawn(shell, args, {
         env: {
           ...process.env,
           HOME: homeDir,

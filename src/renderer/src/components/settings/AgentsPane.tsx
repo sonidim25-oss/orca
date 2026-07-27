@@ -19,6 +19,7 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { cn } from '@/lib/utils'
 import { AgentAwakeSetting } from './AgentAwakeSetting'
+import { PromptAnalyzerSettings } from './PromptAnalyzerSettings'
 import { AgentCacheTimerSection } from './AgentCacheTimerSection'
 import { AgentRuntimeSetting } from './AgentRuntimeSetting'
 import {
@@ -868,6 +869,8 @@ export function AgentsPane({
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />
 
       <AgentAwakeSetting settings={settings} updateSettings={updateSettings} />
+
+      <PromptAnalyzerSettings settings={settings} updateSettings={updateSettings} />
 
       <AgentCacheTimerSection settings={settings} updateSettings={updateSettings} />
 

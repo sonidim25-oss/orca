@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { SetupGuideSidebarEntry } from './SetupGuideSidebarEntry'
 import { SidebarTaskNavButton } from './SidebarTaskNavButton'
 import { HideSidebarMenu } from './sidebar-nav-controls'
+import { PromptAnalyzerTab } from './PromptAnalyzerTab'
 import { translate } from '@/i18n/i18n'
 
 export { getSetupGuideSidebarEntryReady, shouldShowSetupGuideEntry } from './SetupGuideSidebarEntry'
@@ -306,6 +307,7 @@ const SidebarNav = React.memo(function SidebarNav() {
           <HideSidebarMenu onHide={hideMobileButton} />
         </ContextMenu>
       ) : null}
+      <PromptAnalyzerTab />
       <button
         type="button"
         onClick={() => openModal('worktree-palette')}

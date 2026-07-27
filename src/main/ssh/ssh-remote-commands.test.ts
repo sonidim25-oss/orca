@@ -54,7 +54,9 @@ function decodePowerShellCommand(command: string): string {
 
 function runShellCommand(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('/bin/sh', ['-c', command], {
+    const shell = process.platform === 'win32' ? process.env.COMSPEC || 'cmd.exe' : '/bin/sh'
+    const args = process.platform === 'win32' ? ['/c', command] : ['-c', command]
+    const child = spawn(shell, args, {
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let stdout = ''

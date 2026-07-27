@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { basename, posix, win32 } from 'node:path'
 import { parseWslUncPath } from '../shared/wsl-paths'
 import { isVsCodeLauncherExecutable } from '../shared/vscode-remote-ssh-launcher'
+import { findExistingPosixShellPath } from '../shared/posix-shell-path'
 import { resolveCliCommand } from './codex-cli/command'
 import { getCmdExePath } from './win32-utils'
 
@@ -136,7 +137,9 @@ function isCompoundShellCommand(command: string): boolean {
 function buildShellLaunchSpec(
   command: string,
   pathValue: string,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  fileExists: (path: string) => boolean
 ): ExternalEditorLaunchSpec {
   const shellCommand = `${command} ${escapePathForShell(pathValue, platform)}`
   if (platform === 'win32') {
@@ -150,7 +153,10 @@ function buildShellLaunchSpec(
   return {
     kind: 'shell',
     hideWindowsConsole: true,
-    spawnCmd: '/bin/sh',
+    spawnCmd:
+      findExistingPosixShellPath([env.SHELL, '/bin/bash', '/bin/zsh', '/bin/sh'], fileExists) ??
+      env.SHELL ??
+      '/bin/bash',
     spawnArgs: ['-c', shellCommand]
   }
 }
@@ -158,10 +164,15 @@ function buildShellLaunchSpec(
 export function resolveExternalEditorLaunchSpec(
   command: string | undefined,
   pathValue: string,
-  options: { platform?: NodeJS.Platform; fileExists?: (path: string) => boolean } = {}
+  options: {
+    platform?: NodeJS.Platform
+    fileExists?: (path: string) => boolean
+    env?: NodeJS.ProcessEnv
+  } = {}
 ): ExternalEditorLaunchSpec {
   const platform = options.platform ?? process.platform
   const fileExists = options.fileExists ?? existsSync
+  const env = options.env ?? process.env
   const trimmed = command?.trim() || EXTERNAL_EDITOR_CLI_COMMAND
 
   if (isDirectExecutablePath(trimmed, platform, fileExists)) {
@@ -175,7 +186,7 @@ export function resolveExternalEditorLaunchSpec(
   }
 
   if (isCompoundShellCommand(trimmed)) {
-    return buildShellLaunchSpec(trimmed, pathValue, platform)
+    return buildShellLaunchSpec(trimmed, pathValue, platform, env, fileExists)
   }
 
   const editorCommand = resolveCliCommand(trimmed, { platform })
