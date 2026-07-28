@@ -266,6 +266,28 @@ describe('PromptAnalyzerSlice', () => {
     })
   })
 
+  it('uses the selected provider and its nested model for analysis', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+    store.setState({
+      settings: {
+        promptAnalyzerProvider: 'anthropic',
+        promptAnalyzerModel: 'openai/gpt-4o',
+        promptAnalyzerProviders: {
+          anthropic: { model: 'claude-sonnet-4' }
+        }
+      } as AppState['settings']
+    })
+
+    await store.getState().analyzePrompt('Original')
+
+    expect(window.api.promptAnalyzer.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4' })
+    )
+  })
+
   it('owns empty-response failure without publishing success', async () => {
     vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
       ok: true,

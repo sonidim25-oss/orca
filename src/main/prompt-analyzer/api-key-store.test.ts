@@ -38,6 +38,25 @@ beforeEach(() => {
 })
 
 describe('Prompt Analyzer API key store', () => {
+  it('rejects invalid providers at every credential boundary', async () => {
+    const store = await loadApiKeyStore()
+    const invalidProvider = '../outside' as 'openrouter'
+
+    expect(() => store.hasPromptAnalyzerApiKey(invalidProvider)).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    expect(() => store.savePromptAnalyzerApiKey(invalidProvider, 'secret-key')).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    expect(() => store.readPromptAnalyzerApiKey(invalidProvider)).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    expect(() => store.clearPromptAnalyzerApiKey(invalidProvider)).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    expect(existsSync(join(tempHome, '.orca'))).toBe(false)
+  })
+
   it('encrypts, reads, and clears the API key', async () => {
     const store = await loadApiKeyStore()
 
@@ -63,7 +82,9 @@ describe('Prompt Analyzer API key store', () => {
     expect(store.readPromptAnalyzerApiKey('openrouter')).toBe('second-key')
 
     rmSync(apiKeyPath)
-    expect(() => store.readPromptAnalyzerApiKey('openrouter')).toThrow('OpenRouter API key is not configured')
+    expect(() => store.readPromptAnalyzerApiKey('openrouter')).toThrow(
+      'OpenRouter API key is not configured'
+    )
   })
 
   it('does not report an empty encrypted file as configured', async () => {

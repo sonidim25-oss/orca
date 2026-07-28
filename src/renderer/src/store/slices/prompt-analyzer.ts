@@ -145,8 +145,13 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     set({ requestId })
 
     const { config, settings } = get()
-    const provider = options?.provider ?? config?.provider ?? DEFAULT_PROVIDER
-    const rawModel = options?.model ?? config?.model ?? settings?.promptAnalyzerModel
+    const provider =
+      options?.provider ?? config?.provider ?? settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
+    const rawModel =
+      options?.model ??
+      config?.model ??
+      settings?.promptAnalyzerProviders?.[provider]?.model ??
+      (provider === 'openrouter' ? settings?.promptAnalyzerModel : undefined)
     const model =
       typeof rawModel === 'string' && rawModel.trim().length > 0 ? rawModel.trim() : null
     const maxTokens = options?.maxTokens ?? config?.maxTokens ?? DEFAULT_MAX_TOKENS

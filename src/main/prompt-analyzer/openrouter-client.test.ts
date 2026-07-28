@@ -132,7 +132,7 @@ describe('analyzeWithOpenRouter', () => {
     ).rejects.toThrow('OpenRouter response was truncated because the token limit was reached')
   })
 
-  it('rejects unsupported providers before making a request', async () => {
+  it('rejects another provider before making a request', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
@@ -142,7 +142,7 @@ describe('analyzeWithOpenRouter', () => {
         'secret-key',
         new AbortController().signal
       )
-    ).rejects.toThrow('Provider anthropic is not supported yet')
+    ).rejects.toThrow('OpenRouter client requires provider openrouter')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

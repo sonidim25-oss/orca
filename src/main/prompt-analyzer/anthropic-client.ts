@@ -12,23 +12,22 @@ import {
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
+const ANTHROPIC_API_VERSION = '2023-06-01'
 const DEFAULT_SYSTEM_PROMPT =
   "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
 
-const openRouterErrorResponseSchema = z.object({
+const anthropicErrorResponseSchema = z.object({
   error: z.object({ message: z.string().trim().min(1) })
 })
 
-const openRouterSuccessResponseSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        finish_reason: z.string().nullable().optional(),
-        message: z.object({ content: z.string() })
-      })
-    )
-    .min(1)
+const anthropicContentBlockSchema = z.object({
+  text: z.string()
+})
+
+const anthropicSuccessResponseSchema = z.object({
+  content: z.array(anthropicContentBlockSchema).min(1),
+  stop_reason: z.string().nullable().optional()
 })
 
 function redactApiKey(message: string, apiKey: string): string {
@@ -40,9 +39,9 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     return await response.json()
   } catch {
     if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
+      throw new Error(`Anthropic API error: ${response.status}`)
     }
-    throw new Error('OpenRouter returned a non-JSON response')
+    throw new Error('Anthropic returned a non-JSON response')
   }
 }
 
@@ -51,7 +50,7 @@ function hasErrorField(body: unknown): boolean {
 }
 
 function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
-  assertPromptAnalyzerClientProvider(args.provider, 'openrouter', 'OpenRouter')
+  assertPromptAnalyzerClientProvider(args.provider, 'anthropic', 'Anthropic')
   if (!args.prompt?.trim()) {
     throw new Error('Prompt is required')
   }
@@ -79,58 +78,55 @@ function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
   }
 }
 
-export async function analyzeWithOpenRouter(
+export async function analyzeWithAnthropic(
   args: PromptAnalyzerAnalyzeArgs,
   apiKey: string,
   signal: AbortSignal
 ): Promise<PromptAnalyzerAnalyzeResult> {
   validateArgs(args)
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     signal,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_API_VERSION
     },
     body: JSON.stringify({
       model: args.model.trim(),
-      messages: [
-        { role: 'system', content: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
-        { role: 'user', content: args.prompt }
-      ],
       max_tokens: args.maxTokens,
-      temperature: args.temperature
+      system: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: args.prompt }]
     })
   })
 
   const body = await parseResponseBody(response)
   if (!response.ok) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
+    const errorResponse = anthropicErrorResponseSchema.safeParse(body)
     const message = errorResponse.success
       ? errorResponse.data.error.message
-      : `OpenRouter API error: ${response.status}`
+      : `Anthropic API error: ${response.status}`
     throw new Error(redactApiKey(message, apiKey))
   }
   if (hasErrorField(body)) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
+    const errorResponse = anthropicErrorResponseSchema.safeParse(body)
     if (!errorResponse.success) {
-      throw new Error('OpenRouter returned an invalid response')
+      throw new Error('Anthropic returned an invalid response')
     }
     throw new Error(redactApiKey(errorResponse.data.error.message, apiKey))
   }
 
-  const successResponse = openRouterSuccessResponseSchema.safeParse(body)
+  const successResponse = anthropicSuccessResponseSchema.safeParse(body)
   if (!successResponse.success) {
-    throw new Error('OpenRouter returned an invalid response')
+    throw new Error('Anthropic returned an invalid response')
   }
-  const choice = successResponse.data.choices[0]
-  const content = choice.message.content
+  const content = successResponse.data.content.map((b) => b.text).join('')
   if (!content.trim()) {
-    throw new Error('OpenRouter returned an empty response')
+    throw new Error('Anthropic returned an empty response')
   }
-  if (choice.finish_reason === 'length') {
-    throw new Error('OpenRouter response was truncated because the token limit was reached')
+  if (successResponse.data.stop_reason === 'max_tokens') {
+    throw new Error('Anthropic response was truncated because the token limit was reached')
   }
 
   return { suggestion: content, improvedPrompt: content, reasoning: '' }

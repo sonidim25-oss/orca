@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
+  analyzeWithAnthropicMock,
+  analyzeWithGoogleAIMock,
+  analyzeWithOpenAIMock,
   analyzeWithOpenRouterMock,
   clearPromptAnalyzerApiKeyMock,
   handleMock,
@@ -9,6 +12,9 @@ const {
   readPromptAnalyzerApiKeyMock,
   savePromptAnalyzerApiKeyMock
 } = vi.hoisted(() => ({
+  analyzeWithAnthropicMock: vi.fn(),
+  analyzeWithGoogleAIMock: vi.fn(),
+  analyzeWithOpenAIMock: vi.fn(),
   analyzeWithOpenRouterMock: vi.fn(),
   clearPromptAnalyzerApiKeyMock: vi.fn(),
   handleMock: vi.fn(),
@@ -33,6 +39,18 @@ vi.mock('../prompt-analyzer/openrouter-client', () => ({
   analyzeWithOpenRouter: analyzeWithOpenRouterMock
 }))
 
+vi.mock('../prompt-analyzer/openai-client', () => ({
+  analyzeWithOpenAI: analyzeWithOpenAIMock
+}))
+
+vi.mock('../prompt-analyzer/anthropic-client', () => ({
+  analyzeWithAnthropic: analyzeWithAnthropicMock
+}))
+
+vi.mock('../prompt-analyzer/google-ai-client', () => ({
+  analyzeWithGoogleAI: analyzeWithGoogleAIMock
+}))
+
 vi.mock('./ui', () => ({
   isTrustedUIRenderer: isTrustedUIRendererMock
 }))
@@ -47,6 +65,9 @@ const store = {
 describe('registerPromptAnalyzerHandlers', () => {
   beforeEach(() => {
     handleMock.mockClear()
+    analyzeWithAnthropicMock.mockReset()
+    analyzeWithGoogleAIMock.mockReset()
+    analyzeWithOpenAIMock.mockReset()
     analyzeWithOpenRouterMock.mockReset()
     clearPromptAnalyzerApiKeyMock.mockReset()
     hasPromptAnalyzerApiKeyMock.mockReset()
@@ -160,6 +181,78 @@ describe('registerPromptAnalyzerHandlers', () => {
     )
   })
 
+  it.each([
+    ['openrouter', analyzeWithOpenRouterMock],
+    ['openai', analyzeWithOpenAIMock],
+    ['anthropic', analyzeWithAnthropicMock],
+    ['google_ai', analyzeWithGoogleAIMock]
+  ] as const)('routes %s analysis to its provider client', async (provider, analyzeMock) => {
+    store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
+    readPromptAnalyzerApiKeyMock.mockReturnValue('secret-key')
+    analyzeMock.mockResolvedValue({
+      suggestion: 'Better',
+      improvedPrompt: 'Better',
+      reasoning: ''
+    })
+    registerPromptAnalyzerHandlers(store as never)
+    const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
+    const args = {
+      prompt: 'Improve this',
+      provider,
+      model: 'test-model',
+      maxTokens: 2048,
+      temperature: 0.3
+    }
+    const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
+      event: unknown,
+      args: unknown
+    ) => Promise<unknown>
+
+    await expect(analyzeHandler({ sender: { id: 99 } }, args)).resolves.toEqual({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+    expect(readPromptAnalyzerApiKeyMock).toHaveBeenCalledWith(provider)
+    expect(analyzeMock).toHaveBeenCalledWith(args, 'secret-key', expect.any(AbortSignal))
+  })
+
+  it('rejects invalid providers before credential access', async () => {
+    store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
+    registerPromptAnalyzerHandlers(store as never)
+    const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
+    const event = { sender: { id: 99 } }
+    const invalidProvider = '../outside'
+    const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
+      event: unknown,
+      args: unknown
+    ) => Promise<unknown>
+
+    expect(() => handlers.get('promptAnalyzer:getApiKeyStatus')?.(event, invalidProvider)).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    await expect(
+      analyzeHandler(event, {
+        provider: invalidProvider,
+        prompt: 'test',
+        model: 'm',
+        maxTokens: 1,
+        temperature: 0
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Unsupported Prompt Analyzer provider: ../outside'
+    })
+    expect(() =>
+      handlers.get('promptAnalyzer:saveApiKey')?.(event, invalidProvider, 'secret-key')
+    ).toThrow('Unsupported Prompt Analyzer provider: ../outside')
+    expect(() => handlers.get('promptAnalyzer:clearApiKey')?.(event, invalidProvider)).toThrow(
+      'Unsupported Prompt Analyzer provider: ../outside'
+    )
+    expect(readPromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
+    expect(savePromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
+    expect(clearPromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
+  })
+
   it('redacts the credential from errors returned to the renderer', async () => {
     store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
     readPromptAnalyzerApiKeyMock.mockReturnValue('secret-key')
@@ -172,7 +265,10 @@ describe('registerPromptAnalyzerHandlers', () => {
     ) => Promise<unknown>
 
     await expect(
-      analyzeHandler({ sender: { id: 99 } }, { provider: 'openrouter', prompt: 'test', model: 'm', maxTokens: 1, temperature: 0 })
+      analyzeHandler(
+        { sender: { id: 99 } },
+        { provider: 'openrouter', prompt: 'test', model: 'm', maxTokens: 1, temperature: 0 }
+      )
     ).resolves.toEqual({
       ok: false,
       error: 'Rejected [REDACTED]'
@@ -200,7 +296,13 @@ describe('registerPromptAnalyzerHandlers', () => {
       args: unknown
     ) => Promise<unknown>
 
-    const analysis = analyzeHandler(event, { provider: 'openrouter', prompt: 'test', model: 'm', maxTokens: 1, temperature: 0 })
+    const analysis = analyzeHandler(event, {
+      provider: 'openrouter',
+      prompt: 'test',
+      model: 'm',
+      maxTokens: 1,
+      temperature: 0
+    })
     handlers.get('promptAnalyzer:cancel')?.(event)
 
     await expect(analysis).resolves.toEqual({ ok: false, error: 'Request canceled' })
@@ -244,9 +346,30 @@ describe('registerPromptAnalyzerHandlers', () => {
     expect(clearPromptAnalyzerApiKeyMock).toHaveBeenCalledOnce()
   })
 
-  it('restores the cleared credential when clearing configured state fails', () => {
+  it('keeps aggregate configured state when clearing one of multiple provider credentials', () => {
     store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
     readPromptAnalyzerApiKeyMock.mockReturnValue('previous-key')
+    hasPromptAnalyzerApiKeyMock.mockReturnValue(false)
+    registerPromptAnalyzerHandlers(store as never)
+    const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
+    hasPromptAnalyzerApiKeyMock.mockClear()
+    hasPromptAnalyzerApiKeyMock.mockReturnValue(true)
+
+    expect(
+      handlers.get('promptAnalyzer:clearApiKey')?.({ sender: { id: 99 } }, 'openrouter')
+    ).toEqual({ configured: true })
+    expect(clearPromptAnalyzerApiKeyMock).toHaveBeenCalledWith('openrouter')
+    expect(hasPromptAnalyzerApiKeyMock).toHaveBeenCalledWith()
+    expect(store.updateSettings).toHaveBeenLastCalledWith(
+      { promptAnalyzerApiKeyConfigured: true },
+      { notifyListeners: true }
+    )
+  })
+
+  it('restores the cleared credential when aggregate configured state update fails', () => {
+    store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
+    readPromptAnalyzerApiKeyMock.mockReturnValue('previous-key')
+    hasPromptAnalyzerApiKeyMock.mockReturnValue(true)
     store.updateSettings.mockImplementation(() => {
       throw new Error('Settings write failed')
     })
@@ -258,6 +381,10 @@ describe('registerPromptAnalyzerHandlers', () => {
     ).toThrow('Settings write failed')
     expect(clearPromptAnalyzerApiKeyMock).toHaveBeenCalledOnce()
     expect(savePromptAnalyzerApiKeyMock).toHaveBeenCalledWith('openrouter', 'previous-key')
+    expect(store.updateSettings).toHaveBeenLastCalledWith(
+      { promptAnalyzerApiKeyConfigured: true },
+      { notifyListeners: true }
+    )
   })
 
   it('preserves the settings and rollback errors when save rollback fails', () => {
@@ -330,9 +457,9 @@ describe('registerPromptAnalyzerHandlers', () => {
     expect(() => handlers.get('promptAnalyzer:cancel')?.(event)).toThrow(
       'Unauthorized Prompt Analyzer sender'
     )
-    expect(() => handlers.get('promptAnalyzer:saveApiKey')?.(event, 'openrouter', 'attacker-key')).toThrow(
-      'Unauthorized Prompt Analyzer sender'
-    )
+    expect(() =>
+      handlers.get('promptAnalyzer:saveApiKey')?.(event, 'openrouter', 'attacker-key')
+    ).toThrow('Unauthorized Prompt Analyzer sender')
     expect(() => handlers.get('promptAnalyzer:clearApiKey')?.(event, 'openrouter')).toThrow(
       'Unauthorized Prompt Analyzer sender'
     )

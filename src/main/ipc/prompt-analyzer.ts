@@ -12,7 +12,11 @@ import {
   readPromptAnalyzerApiKey,
   savePromptAnalyzerApiKey
 } from '../prompt-analyzer/api-key-store'
+import { analyzeWithOpenAI } from '../prompt-analyzer/openai-client'
+import { analyzeWithAnthropic } from '../prompt-analyzer/anthropic-client'
+import { analyzeWithGoogleAI } from '../prompt-analyzer/google-ai-client'
 import { analyzeWithOpenRouter } from '../prompt-analyzer/openrouter-client'
+import { assertSupportedPromptAnalyzerProvider } from '../prompt-analyzer/supported-provider'
 import { isTrustedUIRenderer } from './ui'
 
 const REQUEST_TIMEOUT_MS = 30_000
@@ -61,7 +65,10 @@ function readConfiguredPromptAnalyzerApiKey(provider: SupportedProvider): string
   }
 }
 
-function restorePromptAnalyzerApiKey(provider: SupportedProvider, apiKey: string | undefined): void {
+function restorePromptAnalyzerApiKey(
+  provider: SupportedProvider,
+  apiKey: string | undefined
+): void {
   if (apiKey) {
     savePromptAnalyzerApiKey(provider, apiKey)
   } else {
@@ -69,7 +76,11 @@ function restorePromptAnalyzerApiKey(provider: SupportedProvider, apiKey: string
   }
 }
 
-function rollbackPromptAnalyzerApiKey(provider: SupportedProvider, apiKey: string | undefined, settingsError: unknown): never {
+function rollbackPromptAnalyzerApiKey(
+  provider: SupportedProvider,
+  apiKey: string | undefined,
+  settingsError: unknown
+): never {
   try {
     restorePromptAnalyzerApiKey(provider, apiKey)
   } catch (rollbackError) {
@@ -86,7 +97,7 @@ async function analyzeWithProvider(
   apiKey: string,
   signal: AbortSignal
 ): Promise<{ suggestion: string; improvedPrompt: string; reasoning: string }> {
-  const provider = args.provider as SupportedProvider
+  const provider = args.provider
   switch (provider) {
     case 'openrouter':
       return analyzeWithOpenRouter(args, apiKey, signal)
@@ -103,33 +114,6 @@ async function analyzeWithProvider(
   }
 }
 
-async function analyzeWithOpenAI(
-  _args: PromptAnalyzerAnalyzeArgs,
-  _apiKey: string,
-  _signal: AbortSignal
-): Promise<{ suggestion: string; improvedPrompt: string; reasoning: string }> {
-  // TODO: Implement OpenAI client
-  throw new Error('OpenAI provider not yet implemented')
-}
-
-async function analyzeWithAnthropic(
-  _args: PromptAnalyzerAnalyzeArgs,
-  _apiKey: string,
-  _signal: AbortSignal
-): Promise<{ suggestion: string; improvedPrompt: string; reasoning: string }> {
-  // TODO: Implement Anthropic client
-  throw new Error('Anthropic provider not yet implemented')
-}
-
-async function analyzeWithGoogleAI(
-  _args: PromptAnalyzerAnalyzeArgs,
-  _apiKey: string,
-  _signal: AbortSignal
-): Promise<{ suggestion: string; improvedPrompt: string; reasoning: string }> {
-  // TODO: Implement Google AI client
-  throw new Error('Google AI provider not yet implemented')
-}
-
 export function registerPromptAnalyzerHandlers(store: Store): void {
   try {
     migrateLegacyApiKey(store)
@@ -137,8 +121,9 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     console.warn('[prompt-analyzer] failed to migrate legacy API key')
   }
 
-  ipcMain.handle('promptAnalyzer:getApiKeyStatus', (event, provider: SupportedProvider) => {
+  ipcMain.handle('promptAnalyzer:getApiKeyStatus', (event, provider: unknown) => {
     assertTrustedPromptAnalyzerSender(event)
+    assertSupportedPromptAnalyzerProvider(provider)
     return { configured: hasPromptAnalyzerApiKey(provider) }
   })
   ipcMain.handle('promptAnalyzer:analyze', async (event, args: PromptAnalyzerAnalyzeArgs) => {
@@ -152,6 +137,7 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     )
     let apiKey: string | undefined
     try {
+      assertSupportedPromptAnalyzerProvider(args.provider)
       apiKey = readPromptAnalyzerApiKey(args.provider)
       const result = await analyzeWithProvider(args, apiKey, controller.signal)
       return { ok: true, result } satisfies PromptAnalyzerAnalyzeResponse
@@ -175,8 +161,9 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     assertTrustedPromptAnalyzerSender(event)
     activeRequests.get(event.sender.id)?.abort(new Error('Request canceled'))
   })
-  ipcMain.handle('promptAnalyzer:saveApiKey', (event, provider: SupportedProvider, apiKey: string) => {
+  ipcMain.handle('promptAnalyzer:saveApiKey', (event, provider: unknown, apiKey: string) => {
     assertTrustedPromptAnalyzerSender(event)
+    assertSupportedPromptAnalyzerProvider(provider)
     const previousApiKey = readConfiguredPromptAnalyzerApiKey(provider)
     savePromptAnalyzerApiKey(provider, apiKey)
     try {
@@ -186,15 +173,20 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     }
     return { configured: true }
   })
-  ipcMain.handle('promptAnalyzer:clearApiKey', (event, provider: SupportedProvider) => {
+  ipcMain.handle('promptAnalyzer:clearApiKey', (event, provider: unknown) => {
     assertTrustedPromptAnalyzerSender(event)
+    assertSupportedPromptAnalyzerProvider(provider)
     const previousApiKey = readConfiguredPromptAnalyzerApiKey(provider)
     clearPromptAnalyzerApiKey(provider)
+    const configured = hasPromptAnalyzerApiKey()
     try {
-      store.updateSettings({ promptAnalyzerApiKeyConfigured: false }, { notifyListeners: true })
+      store.updateSettings(
+        { promptAnalyzerApiKeyConfigured: configured },
+        { notifyListeners: true }
+      )
     } catch (error) {
       rollbackPromptAnalyzerApiKey(provider, previousApiKey, error)
     }
-    return { configured: false }
+    return { configured }
   })
 }

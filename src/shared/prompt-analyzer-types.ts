@@ -4,11 +4,14 @@ export const PROMPT_ANALYZER_MAX_TOKENS_MIN = 1
 export const PROMPT_ANALYZER_TEMPERATURE_MAX = 2
 export const PROMPT_ANALYZER_TEMPERATURE_MIN = 0
 
-export type SupportedProvider =
-  | 'openrouter'
-  | 'openai'
-  | 'anthropic'
-  | 'google_ai'
+export type SupportedProvider = 'openrouter' | 'openai' | 'anthropic' | 'google_ai'
+
+export type PromptAnalyzerProviderSettings = {
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  apiKeyConfigured?: boolean
+}
 
 interface BaseProviderConfig {
   provider: SupportedProvider

@@ -12,15 +12,15 @@ import {
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 const DEFAULT_SYSTEM_PROMPT =
   "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
 
-const openRouterErrorResponseSchema = z.object({
+const openAIErrorResponseSchema = z.object({
   error: z.object({ message: z.string().trim().min(1) })
 })
 
-const openRouterSuccessResponseSchema = z.object({
+const openAISuccessResponseSchema = z.object({
   choices: z
     .array(
       z.object({
@@ -40,9 +40,9 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     return await response.json()
   } catch {
     if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
+      throw new Error(`OpenAI API error: ${response.status}`)
     }
-    throw new Error('OpenRouter returned a non-JSON response')
+    throw new Error('OpenAI returned a non-JSON response')
   }
 }
 
@@ -51,7 +51,7 @@ function hasErrorField(body: unknown): boolean {
 }
 
 function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
-  assertPromptAnalyzerClientProvider(args.provider, 'openrouter', 'OpenRouter')
+  assertPromptAnalyzerClientProvider(args.provider, 'openai', 'OpenAI')
   if (!args.prompt?.trim()) {
     throw new Error('Prompt is required')
   }
@@ -79,20 +79,25 @@ function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
   }
 }
 
-export async function analyzeWithOpenRouter(
+export async function analyzeWithOpenAI(
   args: PromptAnalyzerAnalyzeArgs,
   apiKey: string,
   signal: AbortSignal
 ): Promise<PromptAnalyzerAnalyzeResult> {
   validateArgs(args)
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`
+  })
+  if (args.provider === 'openai' && args.organizationId?.trim()) {
+    headers.set('OpenAI-Organization', args.organizationId.trim())
+  }
+
+  const response = await fetch(OPENAI_API_URL, {
     method: 'POST',
     signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
+    headers,
     body: JSON.stringify({
       model: args.model.trim(),
       messages: [
@@ -106,31 +111,31 @@ export async function analyzeWithOpenRouter(
 
   const body = await parseResponseBody(response)
   if (!response.ok) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
+    const errorResponse = openAIErrorResponseSchema.safeParse(body)
     const message = errorResponse.success
       ? errorResponse.data.error.message
-      : `OpenRouter API error: ${response.status}`
+      : `OpenAI API error: ${response.status}`
     throw new Error(redactApiKey(message, apiKey))
   }
   if (hasErrorField(body)) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
+    const errorResponse = openAIErrorResponseSchema.safeParse(body)
     if (!errorResponse.success) {
-      throw new Error('OpenRouter returned an invalid response')
+      throw new Error('OpenAI returned an invalid response')
     }
     throw new Error(redactApiKey(errorResponse.data.error.message, apiKey))
   }
 
-  const successResponse = openRouterSuccessResponseSchema.safeParse(body)
+  const successResponse = openAISuccessResponseSchema.safeParse(body)
   if (!successResponse.success) {
-    throw new Error('OpenRouter returned an invalid response')
+    throw new Error('OpenAI returned an invalid response')
   }
   const choice = successResponse.data.choices[0]
   const content = choice.message.content
   if (!content.trim()) {
-    throw new Error('OpenRouter returned an empty response')
+    throw new Error('OpenAI returned an empty response')
   }
   if (choice.finish_reason === 'length') {
-    throw new Error('OpenRouter response was truncated because the token limit was reached')
+    throw new Error('OpenAI response was truncated because the token limit was reached')
   }
 
   return { suggestion: content, improvedPrompt: content, reasoning: '' }

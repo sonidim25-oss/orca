@@ -28,6 +28,7 @@ import type {
   RepoSourceControlAiOverrides,
   SourceControlAiSettings
 } from './source-control-ai-types'
+import type { PromptAnalyzerProviderSettings, SupportedProvider } from './prompt-analyzer-types'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import type { AgentKind, LaunchSource, RequestKind } from './telemetry-events'
 import type { SleepingAgentLaunchConfig, SleepingAgentSessionRecord } from './agent-session-resume'
@@ -2981,9 +2982,13 @@ export type GlobalSettings = {
   tabSwitchKeybindingSeed?: 'pending' | 'done'
   /** Local voice/dictation config. Optional for pre-voice profiles; getDefaultSettings() hydrates defaults via the persistence merge. */
   voice?: VoiceSettings
-  /** Prompt Analyzer (OpenRouter) settings */
+  /** Prompt Analyzer settings */
   promptAnalyzerApiKeyConfigured?: boolean
   promptAnalyzerModel?: string
+  promptAnalyzerTemperature?: number
+  promptAnalyzerMaxTokens?: number
+  promptAnalyzerProvider?: SupportedProvider
+  promptAnalyzerProviders?: Partial<Record<SupportedProvider, PromptAnalyzerProviderSettings>>
 }
 
 export type OrcaWorkspaceLayout = {

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 import React from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../../../shared/types'
 import { PromptAnalyzerSettings } from './PromptAnalyzerSettings'
 
@@ -21,6 +21,75 @@ vi.mock('sonner', () => ({
 }))
 
 describe('PromptAnalyzerSettings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getApiKeyStatus.mockResolvedValue({ configured: false })
+  })
+
+  afterEach(cleanup)
+
+  it('persists the selected provider', () => {
+    const updateSettings = vi.fn()
+    Object.assign(window, {
+      api: {
+        promptAnalyzer: {
+          getApiKeyStatus: mocks.getApiKeyStatus,
+          saveApiKey: mocks.saveApiKey,
+          clearApiKey: mocks.clearApiKey
+        }
+      }
+    })
+
+    render(
+      <PromptAnalyzerSettings settings={{} as GlobalSettings} updateSettings={updateSettings} />
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Anthropic' }))
+
+    expect(updateSettings).toHaveBeenCalledWith({ promptAnalyzerProvider: 'anthropic' })
+  })
+
+  it('stores a separate model for each provider', () => {
+    Object.assign(window, {
+      api: {
+        promptAnalyzer: {
+          getApiKeyStatus: mocks.getApiKeyStatus,
+          saveApiKey: mocks.saveApiKey,
+          clearApiKey: mocks.clearApiKey
+        }
+      }
+    })
+
+    function SettingsHarness(): React.JSX.Element {
+      const [settings, setSettings] = React.useState({} as GlobalSettings)
+      return (
+        <PromptAnalyzerSettings
+          settings={settings}
+          updateSettings={(updates) => setSettings((current) => ({ ...current, ...updates }))}
+        />
+      )
+    }
+
+    render(<SettingsHarness />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'OpenAI' }))
+    fireEvent.change(screen.getByLabelText('OpenAI model'), {
+      target: { value: 'gpt-4.1' }
+    })
+    fireEvent.click(screen.getByRole('tab', { name: 'Anthropic' }))
+    fireEvent.change(screen.getByLabelText('Anthropic model'), {
+      target: { value: 'claude-sonnet-4' }
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'OpenAI' }))
+    expect((screen.getByLabelText('OpenAI model') as HTMLInputElement).value).toBe('gpt-4.1')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Anthropic' }))
+    expect((screen.getByLabelText('Anthropic model') as HTMLInputElement).value).toBe(
+      'claude-sonnet-4'
+    )
+  })
+
   it('ignores a stale key-status response after a newer save succeeds', async () => {
     let resolveStatus!: (value: { configured: boolean }) => void
     mocks.getApiKeyStatus.mockReturnValueOnce(
