@@ -13,28 +13,27 @@ export type PromptAnalyzerProviderSettings = {
   apiKeyConfigured?: boolean
 }
 
-interface BaseProviderConfig {
-  provider: SupportedProvider
+type BaseProviderConfig = {
   model: string
   temperature: number
   maxTokens: number
   systemPrompt?: string
 }
 
-export interface OpenRouterConfig extends BaseProviderConfig {
+export type OpenRouterConfig = BaseProviderConfig & {
   provider: 'openrouter'
 }
 
-export interface OpenAIConfig extends BaseProviderConfig {
+export type OpenAIConfig = BaseProviderConfig & {
   provider: 'openai'
   organizationId?: string
 }
 
-export interface AnthropicConfig extends BaseProviderConfig {
+export type AnthropicConfig = BaseProviderConfig & {
   provider: 'anthropic'
 }
 
-export interface GoogleAIConfig extends BaseProviderConfig {
+export type GoogleAIConfig = BaseProviderConfig & {
   provider: 'google_ai'
 }
 

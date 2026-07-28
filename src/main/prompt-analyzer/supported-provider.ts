@@ -7,6 +7,17 @@ export const SUPPORTED_PROMPT_ANALYZER_PROVIDERS = [
   'google_ai'
 ] as const satisfies readonly SupportedProvider[]
 
+const PROVIDER_LABELS: Record<SupportedProvider, string> = {
+  openrouter: 'OpenRouter',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google_ai: 'Google AI'
+}
+
+export function getPromptAnalyzerProviderLabel(provider: SupportedProvider): string {
+  return PROVIDER_LABELS[provider]
+}
+
 export function assertSupportedPromptAnalyzerProvider(
   provider: unknown
 ): asserts provider is SupportedProvider {

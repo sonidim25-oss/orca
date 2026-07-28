@@ -6,6 +6,7 @@ import { platform } from 'node:process'
 import type { SupportedProvider } from '../../shared/prompt-analyzer-types'
 import {
   assertSupportedPromptAnalyzerProvider,
+  getPromptAnalyzerProviderLabel,
   SUPPORTED_PROMPT_ANALYZER_PROVIDERS
 } from './supported-provider'
 
@@ -56,9 +57,10 @@ export function hasPromptAnalyzerApiKey(provider?: SupportedProvider): boolean {
 
 export function savePromptAnalyzerApiKey(provider: SupportedProvider, apiKey: string): void {
   assertSupportedPromptAnalyzerProvider(provider)
+  const providerLabel = getPromptAnalyzerProviderLabel(provider)
   const trimmed = apiKey.trim()
   if (!trimmed) {
-    throw new Error(`${provider} API key is required`)
+    throw new Error(`${providerLabel} API key is required`)
   }
   assertSecureCredentialStorageAvailable()
 
@@ -69,20 +71,21 @@ export function savePromptAnalyzerApiKey(provider: SupportedProvider, apiKey: st
 
 export function readPromptAnalyzerApiKey(provider: SupportedProvider): string {
   assertSupportedPromptAnalyzerProvider(provider)
+  const providerLabel = getPromptAnalyzerProviderLabel(provider)
   assertSecureCredentialStorageAvailable()
 
   const apiKeyPath = getApiKeyPath(provider)
   if (!existsSync(apiKeyPath)) {
-    throw new Error(`${provider} API key is not configured`)
+    throw new Error(`${providerLabel} API key is not configured`)
   }
   try {
     const apiKey = safeStorage.decryptString(readFileSync(apiKeyPath)).trim()
     if (!apiKey) {
-      throw new Error(`${provider} API key is empty`)
+      throw new Error(`${providerLabel} API key is empty`)
     }
     return apiKey
   } catch {
-    throw new Error(`${provider} API key could not be decrypted`)
+    throw new Error(`${providerLabel} API key could not be decrypted`)
   }
 }
 

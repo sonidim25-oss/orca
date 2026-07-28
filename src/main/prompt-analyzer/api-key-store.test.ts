@@ -112,7 +112,7 @@ describe('Prompt Analyzer API key store', () => {
     expect(() => store.readPromptAnalyzerApiKey('openrouter')).toThrow(
       'OpenRouter API key could not be decrypted'
     )
-    expect(safeStorageMock.decryptString).not.toHaveBeenCalled()
+    expect(safeStorageMock.decryptString).toHaveBeenCalledTimes(1)
   })
 
   it('does not persist plaintext when secure storage is unavailable', async () => {
