@@ -288,6 +288,19 @@ describe('PromptAnalyzerSlice', () => {
     )
   })
 
+  it('uses the reliable OpenRouter default when no model is configured', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+
+    await store.getState().analyzePrompt('Original')
+
+    expect(window.api.promptAnalyzer.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openrouter', model: 'openrouter/auto-beta' })
+    )
+  })
+
   it('owns empty-response failure without publishing success', async () => {
     vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
       ok: true,
@@ -307,6 +320,10 @@ describe('PromptAnalyzerSlice', () => {
   })
 
   it('owns validation and error transitions without invoking analysis', async () => {
+    store.setState({
+      settings: { promptAnalyzerProvider: 'anthropic' } as AppState['settings']
+    })
+
     await expect(store.getState().analyzePrompt('Original')).rejects.toThrow(
       'Prompt analyzer model is not configured. Set a model in Settings.'
     )
@@ -371,9 +388,9 @@ describe('PromptAnalyzerSlice', () => {
     )
 
     const activeRequest = store.getState().analyzePrompt('First prompt', { model: 'test-model' })
-    await expect(store.getState().analyzePrompt('Second prompt')).rejects.toThrow(
-      'Prompt analyzer model is not configured. Set a model in Settings.'
-    )
+    await expect(
+      store.getState().analyzePrompt('Second prompt', { provider: 'anthropic' })
+    ).rejects.toThrow('Prompt analyzer model is not configured. Set a model in Settings.')
     resolveAnalyze({
       ok: true,
       result: { suggestion: 'Stale', improvedPrompt: 'Stale', reasoning: '' }

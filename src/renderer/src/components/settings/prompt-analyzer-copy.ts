@@ -1,4 +1,7 @@
-import type { SupportedProvider } from '../../../../shared/prompt-analyzer-types'
+import {
+  PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL,
+  type SupportedProvider
+} from '../../../../shared/prompt-analyzer-types'
 import { translate } from '@/i18n/i18n'
 
 const TITLE_KEY = 'auto.components.settings.prompt-analyzer-copy.title'
@@ -12,7 +15,7 @@ const PROVIDER_LABELS: Record<SupportedProvider, string> = {
 }
 
 const PROVIDER_MODEL_PLACEHOLDERS: Record<SupportedProvider, string> = {
-  openrouter: 'openai/gpt-4o',
+  openrouter: PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL,
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-20250514',
   google_ai: 'gemini-2.5-pro'

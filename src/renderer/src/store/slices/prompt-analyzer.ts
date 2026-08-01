@@ -8,7 +8,10 @@ import type {
   PromptAnalyzerState
 } from '@/prompt-analyzer'
 import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
-import type { OpenAIConfig } from '../../../../shared/prompt-analyzer-types'
+import {
+  PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL,
+  type OpenAIConfig
+} from '../../../../shared/prompt-analyzer-types'
 
 const MAX_MAX_TOKENS = 32_768
 const MIN_MAX_TOKENS = 1
@@ -153,7 +156,11 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       settings?.promptAnalyzerProviders?.[provider]?.model ??
       (provider === 'openrouter' ? settings?.promptAnalyzerModel : undefined)
     const model =
-      typeof rawModel === 'string' && rawModel.trim().length > 0 ? rawModel.trim() : null
+      typeof rawModel === 'string' && rawModel.trim().length > 0
+        ? rawModel.trim()
+        : provider === 'openrouter'
+          ? PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL
+          : null
     const maxTokens = options?.maxTokens ?? config?.maxTokens ?? DEFAULT_MAX_TOKENS
     const temperature = options?.temperature ?? config?.temperature ?? DEFAULT_TEMPERATURE
 
