@@ -19,6 +19,8 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
 
 describe('analyzeWithOpenRouter', () => {
   afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -41,10 +43,81 @@ describe('analyzeWithOpenRouter', () => {
     const [, init] = fetchMock.mock.calls[0]
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer secret-key')
     expect(JSON.parse(String(init.body))).toMatchObject({
-      model: 'test-model',
+      models: ['test-model', 'openrouter/auto-beta'],
+      provider: { allow_fallbacks: true },
       max_tokens: 2048,
       temperature: 0.3
     })
+  })
+
+  it('retries HTTP 429 responses and succeeds on the third attempt', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: 429, message: 'Rate limited' } }, { status: 429 })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: 429, message: 'Rate limited' } }, { status: 429 })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    await vi.runAllTimersAsync()
+
+    await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps raw rate-limit details and adds guidance after three attempts', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: 429,
+            message: 'Provider returned error',
+            metadata: { raw: 'test-model is temporarily rate-limited upstream.' }
+          }
+        },
+        { status: 429 }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    const rejection = expect(analysis).rejects.toThrow(
+      'test-model is temporarily rate-limited upstream. Switch models or add OpenRouter credits.'
+    )
+    await vi.runAllTimersAsync()
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('suggests the reliable default when OpenRouter rejects an invalid model', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: { code: 400, message: 'google/gemma-4-31b is not a valid model ID' } },
+            { status: 400 }
+          )
+        )
+    )
+
+    await expect(
+      analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow(
+      'google/gemma-4-31b is not a valid model ID. Choose a valid model in Settings; try openrouter/auto-beta.'
+    )
   })
 
   it('prefers trimmed OpenRouter metadata details for rate limit errors', async () => {

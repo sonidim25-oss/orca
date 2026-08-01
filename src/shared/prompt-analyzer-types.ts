@@ -3,6 +3,7 @@ export const PROMPT_ANALYZER_MAX_TOKENS_MAX = 32768
 export const PROMPT_ANALYZER_MAX_TOKENS_MIN = 1
 export const PROMPT_ANALYZER_TEMPERATURE_MAX = 2
 export const PROMPT_ANALYZER_TEMPERATURE_MIN = 0
+export const PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL = 'openrouter/auto-beta'
 
 export type SupportedProvider = 'openrouter' | 'openai' | 'anthropic' | 'google_ai'
 
