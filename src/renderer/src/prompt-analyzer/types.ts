@@ -34,6 +34,11 @@ export type PromptAnalyzerProvider = SupportedProvider
 
 export type PromptAnalyzerState = 'idle' | 'processing' | 'success' | 'error'
 
+export type PromptAnalyzerResultSnapshot = {
+  originalPrompt: string
+  improvedPrompt: string
+}
+
 export type AnalyzeOptions = {
   provider?: SupportedProvider
   model?: string
@@ -48,6 +53,7 @@ export type PromptAnalyzerSlice = {
   state: PromptAnalyzerState
   originalPrompt: string
   improvedPrompt: string
+  lastSuccessfulResult: PromptAnalyzerResultSnapshot | null
   error: string | null
   config: PromptAnalyzerConfig | null
   requestId: number

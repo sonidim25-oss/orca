@@ -30,6 +30,7 @@ export function PromptAnalyzerPanel({
   const hasWarned = useAppStore((s) => s.hasWarned)
   const originalPrompt = useAppStore((s) => s.originalPrompt)
   const improvedPrompt = useAppStore((s) => s.improvedPrompt)
+  const lastSuccessfulResult = useAppStore((s) => s.lastSuccessfulResult)
   const error = useAppStore((s) => s.error)
   const settings = useAppStore((s) => s.settings)
   const updatePrompt = useAppStore((s) => s.updatePrompt)
@@ -43,7 +44,8 @@ export function PromptAnalyzerPanel({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const displayedImprovedPrompt = improvedPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
+  const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
+  const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
 
   // Focus textarea on open
   useEffect(() => {
@@ -160,9 +162,9 @@ export function PromptAnalyzerPanel({
   }
 
   const isProcessing = state === 'processing'
-  const hasResult = state === 'success' && improvedPrompt
+  const hasResult = Boolean(resultPrompt)
   const hasApiKey = settings?.promptAnalyzerApiKeyConfigured === true
-  const isImprovedPromptTruncated = improvedPrompt.length > IMPROVED_PROMPT_DISPLAY_LIMIT
+  const isImprovedPromptTruncated = resultPrompt.length > IMPROVED_PROMPT_DISPLAY_LIMIT
 
   return (
     <div
