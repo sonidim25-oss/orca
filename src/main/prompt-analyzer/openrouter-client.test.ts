@@ -47,7 +47,29 @@ describe('analyzeWithOpenRouter', () => {
     })
   })
 
-  it('redacts the credential from provider errors', async () => {
+  it('prefers trimmed OpenRouter metadata details for rate limit errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              code: 429,
+              message: 'Rate limit exceeded',
+              metadata: { raw: '  Retry after resetting secret-key usage.  ' }
+            }
+          },
+          { status: 429 }
+        )
+      )
+    )
+
+    await expect(
+      analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Retry after resetting [REDACTED] usage.')
+  })
+
+  it('falls back to the message for message-only OpenRouter errors', async () => {
     vi.stubGlobal(
       'fetch',
       vi
