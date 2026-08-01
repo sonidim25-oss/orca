@@ -34,7 +34,8 @@ function makeSetupGuideProgress(
 
 function renderSidebar(
   activeSectionId = 'orchestration',
-  settings: GlobalSettings = getDefaultSettings('/tmp')
+  settings: GlobalSettings = getDefaultSettings('/tmp'),
+  searchQuery = ''
 ): string {
   return renderToStaticMarkup(
     <TooltipProvider>
@@ -86,7 +87,7 @@ function renderSidebar(
         ]}
         repoSections={[]}
         hasRepos={false}
-        searchQuery=""
+        searchQuery={searchQuery}
         onBack={vi.fn()}
         onSearchChange={vi.fn()}
         onSelectSection={vi.fn()}
@@ -160,5 +161,24 @@ describe('SettingsSidebar', () => {
 
     expect(markup).toContain('aria-current="page"')
     expect(markup).toContain('Onboarding checklist')
+  })
+
+  it('search input has correct padding to prevent icon/shortcut collision', () => {
+    const markup = renderSidebar()
+
+    // pl-9 = left padding for search icon (absolute left-3)
+    // pr-20 = right padding for shortcut combo (absolute right-2)
+    expect(markup).toContain('pl-9')
+    expect(markup).toContain('pr-20')
+  })
+
+  it('shortcut combo renders only when search query is empty', () => {
+    const markupEmpty = renderSidebar('orchestration', getDefaultSettings('/tmp'), '')
+    const markupFilled = renderSidebar('orchestration', getDefaultSettings('/tmp'), 'test')
+
+    // When empty: shortcut combo should be present (check for key cap structure)
+    expect(markupEmpty).toContain('inline-flex gap-0.5')
+    // When filled: shortcut combo should NOT be present
+    expect(markupFilled).not.toContain('inline-flex gap-0.5')
   })
 })
