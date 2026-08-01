@@ -1,4 +1,4 @@
-import { Check, Copy, Sparkles, X } from 'lucide-react'
+import { Check, Copy, Save, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -10,6 +10,7 @@ type PromptAnalyzerResultProps = {
   isTruncated: boolean
   onCopy: () => void
   onCopyAndUse: () => void
+  onSave: () => void
   onEdit: () => void
 }
 
@@ -18,6 +19,7 @@ export function PromptAnalyzerResult({
   isTruncated,
   onCopy,
   onCopyAndUse,
+  onSave,
   onEdit
 }: PromptAnalyzerResultProps): React.JSX.Element {
   return (
@@ -63,6 +65,16 @@ export function PromptAnalyzerResult({
       )}
 
       <div className="flex items-center justify-end gap-2 pt-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="sm" onClick={onSave} className="gap-1.5">
+              <Save className="size-3.5" strokeWidth={2} />
+              <span>{translate('promptAnalyzer.panel.save', 'Save')}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Save improved prompt</TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

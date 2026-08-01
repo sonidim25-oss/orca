@@ -146,6 +146,28 @@ export function PromptAnalyzerPanel({
     [displayedImprovedPrompt, originalPrompt]
   )
 
+  const handleSave = useCallback(async () => {
+    if (!displayedImprovedPrompt) {
+      return
+    }
+
+    try {
+      const result = await window.api.fs.saveDownloadedFile({
+        suggestedName: 'improved-prompt.md',
+        content: displayedImprovedPrompt,
+        encoding: 'utf8'
+      })
+      if (result.canceled) {
+        return
+      }
+      toast.success('Prompt saved', { description: `Saved to ${result.destinationPath}` })
+    } catch (err) {
+      toast.error('Save failed', {
+        description: err instanceof Error ? err.message : 'Could not save improved prompt'
+      })
+    }
+  }, [displayedImprovedPrompt])
+
   const handlePromptChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       updatePrompt(e.target.value.slice(0, PROMPT_ANALYZER_PROMPT_MAX_CHARS))
@@ -345,6 +367,7 @@ export function PromptAnalyzerPanel({
               isTruncated={isImprovedPromptTruncated}
               onCopy={() => void handleCopy()}
               onCopyAndUse={() => void handleCopy(onClose)}
+              onSave={() => void handleSave()}
               onEdit={dismissResult}
             />
           )}

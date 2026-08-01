@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import React from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PromptAnalyzerPanel } from './PromptAnalyzerPanel'
 
@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   analyze: vi.fn(),
   confirm: vi.fn(),
   errorToast: vi.fn(),
+  saveDownloadedFile: vi.fn(),
+  successToast: vi.fn(),
   state: {
     state: 'idle',
     hasWarned: true,
@@ -58,8 +60,14 @@ vi.mock('@/i18n/i18n', () => ({
 }))
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: mocks.errorToast }
+  toast: { success: mocks.successToast, error: mocks.errorToast }
 }))
+
+function renderResult(): void {
+  mocks.state.state = 'success'
+  mocks.state.improvedPrompt = 'Improved prompt content'
+  render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+}
 
 describe('PromptAnalyzerPanel', () => {
   beforeEach(() => {
@@ -71,9 +79,19 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.lastSuccessfulResult = null
     mocks.state.error = null
     mocks.analyze.mockResolvedValue(null)
+    mocks.saveDownloadedFile.mockResolvedValue({ canceled: true })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        fs: {
+          saveDownloadedFile: mocks.saveDownloadedFile
+        }
+      }
+    })
   })
 
   afterEach(() => {
+    cleanup()
     document.body.style.overflow = ''
   })
 
@@ -112,5 +130,50 @@ describe('PromptAnalyzerPanel', () => {
 
     expect(screen.getByDisplayValue('Previous improvement')).toBeTruthy()
     expect(screen.queryByText('How it works')).toBeNull()
+  })
+
+  it('saves the improved prompt with a sensible default filename', async () => {
+    mocks.saveDownloadedFile.mockResolvedValue({
+      canceled: false,
+      destinationPath: 'C:\\prompts\\improved-prompt.md'
+    })
+    renderResult()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await vi.waitFor(() =>
+      expect(mocks.saveDownloadedFile).toHaveBeenCalledWith({
+        suggestedName: 'improved-prompt.md',
+        content: 'Improved prompt content',
+        encoding: 'utf8'
+      })
+    )
+    expect(mocks.successToast).toHaveBeenCalledWith('Prompt saved', {
+      description: 'Saved to C:\\prompts\\improved-prompt.md'
+    })
+  })
+
+  it('does nothing when saving is canceled', async () => {
+    renderResult()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await vi.waitFor(() => expect(mocks.saveDownloadedFile).toHaveBeenCalledOnce())
+    expect(mocks.successToast).not.toHaveBeenCalled()
+    expect(mocks.errorToast).not.toHaveBeenCalled()
+  })
+
+  it('reports a save failure', async () => {
+    mocks.saveDownloadedFile.mockRejectedValue(new Error('Disk full'))
+    renderResult()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await vi.waitFor(() =>
+      expect(mocks.errorToast).toHaveBeenCalledWith('Save failed', {
+        description: 'Disk full'
+      })
+    )
+    expect(mocks.successToast).not.toHaveBeenCalled()
   })
 })
