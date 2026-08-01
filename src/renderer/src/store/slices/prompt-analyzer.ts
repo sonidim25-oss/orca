@@ -25,6 +25,7 @@ const getInitialState = () => ({
   state: 'idle' as PromptAnalyzerState,
   originalPrompt: '',
   improvedPrompt: '',
+  lastSuccessfulResult: null,
   error: null as string | null,
   config: null as PromptAnalyzerConfig | null,
   requestId: 0
@@ -73,6 +74,18 @@ const isPromptAnalyzerConfig = (
 const INVALID_CONFIG_ERROR =
   'Prompt analyzer config requires a supported provider, non-empty model, temperature between 0 and 2, and maxTokens between 1 and 32768'
 
+function getClosedPanelState(state: AppState) {
+  const result = state.lastSuccessfulResult
+  return {
+    isPanelOpen: false,
+    state: (result ? 'success' : 'idle') as PromptAnalyzerState,
+    originalPrompt: result?.originalPrompt ?? '',
+    improvedPrompt: result?.improvedPrompt ?? '',
+    error: null,
+    requestId: state.requestId + 1
+  }
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Prompt analysis failed with an unknown error'
 }
@@ -97,21 +110,14 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
   ...getInitialState(),
 
   setPanelOpen: (open: boolean) => {
-    if (!open && get().isPanelOpen) {
+    if (open) {
+      set({ isPanelOpen: true })
+      return
+    }
+    if (get().isPanelOpen) {
       void window.api.promptAnalyzer.cancel()
     }
-    set((state) => ({
-      isPanelOpen: open,
-      ...(!open
-        ? {
-            state: 'idle' as PromptAnalyzerState,
-            originalPrompt: '',
-            improvedPrompt: '',
-            error: null,
-            requestId: state.requestId + 1
-          }
-        : {})
-    }))
+    set(getClosedPanelState)
   },
 
   setHasWarned: (hasWarned: boolean) => set({ hasWarned }),
@@ -134,6 +140,7 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     set({
       state: 'idle' as PromptAnalyzerState,
       improvedPrompt: '',
+      lastSuccessfulResult: null,
       error: null
     }),
 
@@ -206,6 +213,10 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       set({
         state: 'success' as PromptAnalyzerState,
         improvedPrompt: response.result.improvedPrompt,
+        lastSuccessfulResult: {
+          originalPrompt: prompt,
+          improvedPrompt: response.result.improvedPrompt
+        },
         error: null
       })
       return response.result
@@ -244,24 +255,12 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     }),
 
   togglePanel: () => {
-    if (get().isPanelOpen) {
-      void window.api.promptAnalyzer.cancel()
+    if (!get().isPanelOpen) {
+      set({ isPanelOpen: true })
+      return
     }
-    set((state) => {
-      const open = !state.isPanelOpen
-      return {
-        isPanelOpen: open,
-        ...(!open
-          ? {
-              state: 'idle' as PromptAnalyzerState,
-              originalPrompt: '',
-              improvedPrompt: '',
-              error: null,
-              requestId: state.requestId + 1
-            }
-          : {})
-      }
-    })
+    void window.api.promptAnalyzer.cancel()
+    set(getClosedPanelState)
   },
 
   reset: () => {

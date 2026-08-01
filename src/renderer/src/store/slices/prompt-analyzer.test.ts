@@ -38,6 +38,7 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.state).toBe('idle')
     expect(state.originalPrompt).toBe('')
     expect(state.improvedPrompt).toBe('')
+    expect(state.lastSuccessfulResult).toBeNull()
     expect(state.error).toBeNull()
     expect(state.config).toBeNull()
   })
@@ -71,6 +72,69 @@ describe('PromptAnalyzerSlice', () => {
     expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
   })
 
+  it('retains a successful result across panel close and reopen', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+    store.getState().setPanelOpen(true)
+
+    await store.getState().analyzePrompt('Original', { model: 'test-model' })
+    store.getState().setPanelOpen(false)
+    store.getState().setPanelOpen(true)
+
+    expect(store.getState()).toMatchObject({
+      isPanelOpen: true,
+      state: 'success',
+      originalPrompt: 'Original',
+      improvedPrompt: 'Better',
+      lastSuccessfulResult: { originalPrompt: 'Original', improvedPrompt: 'Better' },
+      error: null
+    })
+
+    store.getState().togglePanel()
+    store.getState().togglePanel()
+    expect(store.getState()).toMatchObject({
+      isPanelOpen: true,
+      state: 'success',
+      originalPrompt: 'Original',
+      improvedPrompt: 'Better'
+    })
+  })
+
+  it('replaces the retained result on success but preserves it after failure', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze)
+      .mockResolvedValueOnce({
+        ok: true,
+        result: { suggestion: 'First better', improvedPrompt: 'First better', reasoning: '' }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        result: { suggestion: 'Second better', improvedPrompt: 'Second better', reasoning: '' }
+      })
+      .mockRejectedValueOnce(new Error('Provider failed'))
+    store.getState().setPanelOpen(true)
+
+    await store.getState().analyzePrompt('First original', { model: 'test-model' })
+    await store.getState().analyzePrompt('Second original', { model: 'test-model' })
+    await expect(
+      store.getState().analyzePrompt('Failed original', { model: 'test-model' })
+    ).rejects.toThrow('Provider failed')
+
+    expect(store.getState().lastSuccessfulResult).toEqual({
+      originalPrompt: 'Second original',
+      improvedPrompt: 'Second better'
+    })
+
+    store.getState().setPanelOpen(false)
+    expect(store.getState()).toMatchObject({
+      state: 'success',
+      originalPrompt: 'Second original',
+      improvedPrompt: 'Second better',
+      error: null
+    })
+  })
+
   it('3. updatePrompt and dismissResult own their complete transitions', () => {
     store.setState({
       state: 'success',
@@ -87,11 +151,15 @@ describe('PromptAnalyzerSlice', () => {
     })
 
     store.setState({ state: 'success', improvedPrompt: 'improved' })
+    store.setState({
+      lastSuccessfulResult: { originalPrompt: 'edited', improvedPrompt: 'improved' }
+    })
     store.getState().dismissResult()
     expect(store.getState()).toMatchObject({
       state: 'idle',
       originalPrompt: 'edited',
       improvedPrompt: '',
+      lastSuccessfulResult: null,
       error: null
     })
   })
@@ -242,6 +310,7 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.state).toBe('idle')
     expect(state.originalPrompt).toBe('')
     expect(state.improvedPrompt).toBe('')
+    expect(state.lastSuccessfulResult).toBeNull()
     expect(state.error).toBeNull()
     expect(state.config).toBeNull()
     expect(state.requestId).toBe(8)

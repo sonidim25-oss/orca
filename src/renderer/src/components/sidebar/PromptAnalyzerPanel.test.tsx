@@ -14,7 +14,11 @@ const mocks = vi.hoisted(() => ({
     hasWarned: true,
     originalPrompt: 'Improve this prompt',
     improvedPrompt: '',
-    error: null,
+    lastSuccessfulResult: null as {
+      originalPrompt: string
+      improvedPrompt: string
+    } | null,
+    error: null as string | null,
     settings: {
       promptAnalyzerApiKeyConfigured: true,
       promptAnalyzerModel: 'test-model'
@@ -64,6 +68,7 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.hasWarned = true
     mocks.state.originalPrompt = 'Improve this prompt'
     mocks.state.improvedPrompt = ''
+    mocks.state.lastSuccessfulResult = null
     mocks.state.error = null
     mocks.analyze.mockResolvedValue(null)
   })
@@ -92,5 +97,20 @@ describe('PromptAnalyzerPanel', () => {
 
     rerender(<PromptAnalyzerPanel isOpen={false} onClose={vi.fn()} />)
     expect(document.body.style.overflow).toBe('scroll')
+  })
+
+  it('renders the retained result when a later improvement fails', () => {
+    mocks.state.state = 'error'
+    mocks.state.originalPrompt = 'Failed original'
+    mocks.state.error = 'Provider failed'
+    mocks.state.lastSuccessfulResult = {
+      originalPrompt: 'Previous original',
+      improvedPrompt: 'Previous improvement'
+    }
+
+    render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    expect(screen.getByDisplayValue('Previous improvement')).toBeTruthy()
+    expect(screen.queryByText('How it works')).toBeNull()
   })
 })
