@@ -16,7 +16,11 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants'
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 const openRouterErrorResponseSchema = z.object({
-  error: z.object({ message: z.string().trim().min(1) })
+  error: z.object({
+    code: z.number().optional(),
+    message: z.string().trim().min(1),
+    metadata: z.object({ raw: z.string().optional() }).optional()
+  })
 })
 
 const openRouterSuccessResponseSchema = z.object({
@@ -32,6 +36,12 @@ const openRouterSuccessResponseSchema = z.object({
 
 function redactApiKey(message: string, apiKey: string): string {
   return apiKey ? message.replaceAll(apiKey, '[REDACTED]') : message
+}
+
+function getOpenRouterErrorMessage(
+  error: z.infer<typeof openRouterErrorResponseSchema>['error']
+): string {
+  return error.metadata?.raw?.trim() || error.message
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {
@@ -107,7 +117,7 @@ export async function analyzeWithOpenRouter(
   if (!response.ok) {
     const errorResponse = openRouterErrorResponseSchema.safeParse(body)
     const message = errorResponse.success
-      ? errorResponse.data.error.message
+      ? getOpenRouterErrorMessage(errorResponse.data.error)
       : `OpenRouter API error: ${response.status}`
     throw new Error(redactApiKey(message, apiKey))
   }
@@ -116,7 +126,7 @@ export async function analyzeWithOpenRouter(
     if (!errorResponse.success) {
       throw new Error('OpenRouter returned an invalid response')
     }
-    throw new Error(redactApiKey(errorResponse.data.error.message, apiKey))
+    throw new Error(redactApiKey(getOpenRouterErrorMessage(errorResponse.data.error), apiKey))
   }
 
   const successResponse = openRouterSuccessResponseSchema.safeParse(body)
