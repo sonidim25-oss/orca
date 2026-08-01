@@ -11,10 +11,9 @@ import {
 } from '../../shared/prompt-analyzer-types'
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
+import { DEFAULT_SYSTEM_PROMPT } from './constants'
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const DEFAULT_SYSTEM_PROMPT =
-  "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
 
 const openRouterErrorResponseSchema = z.object({
   error: z.object({ message: z.string().trim().min(1) })
