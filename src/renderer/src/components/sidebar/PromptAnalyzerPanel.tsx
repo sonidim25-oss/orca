@@ -176,14 +176,29 @@ export function PromptAnalyzerPanel({
     [resultPrompt, originalPrompt]
   )
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!resultPrompt) {
       return
     }
 
-    updatePrompt(resultPrompt)
-    dismissResult()
-  }, [resultPrompt, updatePrompt, dismissResult])
+    try {
+      const result = await window.api.fs.saveDownloadedFile({
+        suggestedName: 'improved-prompt.md',
+        content: resultPrompt,
+        encoding: 'utf8'
+      })
+      if (result.canceled) {
+        return
+      }
+      toast.success('Prompt saved', {
+        description: `Saved to ${result.destinationPath}`
+      })
+    } catch (error) {
+      toast.error('Save failed', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }, [resultPrompt])
 
   const handlePromptChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
