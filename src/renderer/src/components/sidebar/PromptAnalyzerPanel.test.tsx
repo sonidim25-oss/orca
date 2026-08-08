@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   analyze: vi.fn(),
   confirm: vi.fn(),
   errorToast: vi.fn(),
+  saveDownloadedFile: vi.fn(),
   successToast: vi.fn(),
   writeClipboardText: vi.fn(),
   state: {
@@ -81,6 +82,9 @@ describe('PromptAnalyzerPanel', () => {
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: {
+        fs: {
+          saveDownloadedFile: mocks.saveDownloadedFile
+        },
         ui: {
           writeClipboardText: mocks.writeClipboardText
         }
@@ -150,23 +154,61 @@ describe('PromptAnalyzerPanel', () => {
     expect(screen.queryByRole('button', { name: '' })).toBeNull()
   })
 
-  it('applies the complete retained result while capping its display', () => {
+  it('saves the complete retained result and shows its destination', async () => {
     const fullPrompt = `${'b'.repeat(8000)}complete-save-tail`
-    const onClose = vi.fn()
     mocks.state.state = 'error'
     mocks.state.lastSuccessfulResult = {
       originalPrompt: 'Previous original',
       improvedPrompt: fullPrompt
     }
+    mocks.saveDownloadedFile.mockResolvedValue({
+      canceled: false,
+      destinationPath: 'C:\\prompts\\improved-prompt.md'
+    })
 
-    render(<PromptAnalyzerPanel isOpen onClose={onClose} />)
+    render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
 
     expect(screen.getByDisplayValue('b'.repeat(8000))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(mocks.state.updatePrompt).toHaveBeenCalledWith(fullPrompt)
-    expect(mocks.state.dismissResult).toHaveBeenCalledOnce()
-    expect(mocks.writeClipboardText).not.toHaveBeenCalled()
-    expect(onClose).not.toHaveBeenCalled()
+    await vi.waitFor(() =>
+      expect(mocks.saveDownloadedFile).toHaveBeenCalledWith({
+        suggestedName: 'improved-prompt.md',
+        content: fullPrompt,
+        encoding: 'utf8'
+      })
+    )
+    expect(mocks.successToast).toHaveBeenCalledWith('Prompt saved', {
+      description: 'Saved to C:\\prompts\\improved-prompt.md'
+    })
+    expect(mocks.state.updatePrompt).not.toHaveBeenCalled()
+    expect(mocks.state.dismissResult).not.toHaveBeenCalled()
+  })
+
+  it('leaves the result unchanged when saving is canceled', async () => {
+    renderResult()
+    mocks.saveDownloadedFile.mockResolvedValue({ canceled: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await vi.waitFor(() => expect(mocks.saveDownloadedFile).toHaveBeenCalledOnce())
+    expect(mocks.successToast).not.toHaveBeenCalled()
+    expect(mocks.errorToast).not.toHaveBeenCalled()
+    expect(mocks.state.updatePrompt).not.toHaveBeenCalled()
+    expect(mocks.state.dismissResult).not.toHaveBeenCalled()
+  })
+
+  it('shows the error message when saving fails', async () => {
+    renderResult()
+    mocks.saveDownloadedFile.mockRejectedValue(new Error('Disk is full'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await vi.waitFor(() =>
+      expect(mocks.errorToast).toHaveBeenCalledWith('Save failed', {
+        description: 'Disk is full'
+      })
+    )
+    expect(mocks.successToast).not.toHaveBeenCalled()
   })
 })
