@@ -130,6 +130,37 @@ describe('analyzeWithGoogleAI', () => {
     ).rejects.toThrow('Rejected [REDACTED]')
   })
 
+  it('uses raw error metadata and redacts every API key occurrence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
+            { status: 401 }
+          )
+        )
+    )
+
+    await expect(
+      analyzeWithGoogleAI(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+  })
+
+  it('extracts nested error details without a top-level message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: { error: { message: 'Invalid secret-key' } } }))
+    )
+
+    await expect(
+      analyzeWithGoogleAI(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Invalid [REDACTED]')
+  })
+
   it('rejects another provider before making a request', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
