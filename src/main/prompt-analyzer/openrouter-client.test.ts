@@ -105,6 +105,26 @@ describe('analyzeWithOpenRouter', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  it('retries HTTP 502 responses and succeeds on the third attempt', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    void analysis.catch(() => undefined)
+    await vi.runAllTimersAsync()
+
+    await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
   it('keeps raw rate-limit details and adds guidance after three attempts', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0)
