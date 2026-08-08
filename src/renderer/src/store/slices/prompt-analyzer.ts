@@ -4,14 +4,10 @@ import type {
   AnalyzeOptions,
   AnalyzeResult,
   PromptAnalyzerSlice,
-  PromptAnalyzerConfig,
   PromptAnalyzerState
 } from '@/prompt-analyzer'
 import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
-import {
-  PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL,
-  type OpenAIConfig
-} from '../../../../shared/prompt-analyzer-types'
+import { PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL } from '../../../../shared/prompt-analyzer-types'
 
 const MISSING_API_KEY_ERROR =
   'OpenRouter API key not configured. Please add it in Settings > Prompt Analyzer.'
@@ -24,43 +20,8 @@ const getInitialState = () => ({
   improvedPrompt: '',
   lastSuccessfulResult: null,
   error: null as string | null,
-  config: null as PromptAnalyzerConfig | null,
   requestId: 0
 })
-
-const validateBaseConfig = (
-  config: Partial<PromptAnalyzerConfig>
-): config is PromptAnalyzerConfig =>
-  typeof config.model === 'string' && config.model.trim().length > 0
-
-const isPromptAnalyzerConfig = (
-  config: Partial<PromptAnalyzerConfig>
-): config is PromptAnalyzerConfig => {
-  if (!config.provider) {
-    return false
-  }
-  if (!validateBaseConfig(config)) {
-    return false
-  }
-  // Provider-specific validation
-  switch (config.provider) {
-    case 'openai': {
-      const openaiConfig = config as Partial<OpenAIConfig>
-      return (
-        openaiConfig.organizationId === undefined || typeof openaiConfig.organizationId === 'string'
-      )
-    }
-    case 'openrouter':
-    case 'anthropic':
-    case 'google_ai':
-      return true
-    default:
-      return false
-  }
-}
-
-const INVALID_CONFIG_ERROR =
-  'Prompt analyzer config requires a supported provider and non-empty model'
 
 function getClosedPanelState(state: AppState) {
   const result = state.lastSuccessfulResult
@@ -126,12 +87,10 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     const requestId = get().requestId + 1
     set({ requestId })
 
-    const { config, settings } = get()
-    const provider =
-      options?.provider ?? config?.provider ?? settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
+    const { settings } = get()
+    const provider = options?.provider ?? settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
     const rawModel =
       options?.model ??
-      config?.model ??
       settings?.promptAnalyzerProviders?.[provider]?.model ??
       (provider === 'openrouter' ? settings?.promptAnalyzerModel : undefined)
     const model =
@@ -197,30 +156,6 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       throw analysisError
     }
   },
-
-  setConfig: (config: Partial<PromptAnalyzerConfig> | null) =>
-    set((state) => {
-      if (config === null) {
-        return { config: null }
-      }
-
-      const mergedConfig = state.config ? { ...state.config, ...config } : config
-      if (!isPromptAnalyzerConfig(mergedConfig)) {
-        throw new Error(INVALID_CONFIG_ERROR)
-      }
-
-      return { config: mergedConfig }
-    }),
-
-  setModel: (model: string) =>
-    set((state) => {
-      const updatedConfig = state.config ? { ...state.config, model } : null
-      if (!updatedConfig || !isPromptAnalyzerConfig(updatedConfig)) {
-        throw new Error(INVALID_CONFIG_ERROR)
-      }
-
-      return { config: updatedConfig }
-    }),
 
   togglePanel: () => {
     if (!get().isPanelOpen) {

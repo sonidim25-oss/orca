@@ -22,8 +22,7 @@ const mocks = vi.hoisted(() => ({
     } | null,
     error: null as string | null,
     settings: {
-      promptAnalyzerApiKeyConfigured: true,
-      promptAnalyzerModel: 'test-model'
+      promptAnalyzerApiKeyConfigured: true
     },
     updatePrompt: vi.fn(),
     setHasWarned: vi.fn(),
