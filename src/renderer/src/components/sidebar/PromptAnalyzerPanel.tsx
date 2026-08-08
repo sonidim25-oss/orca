@@ -123,7 +123,7 @@ export function PromptAnalyzerPanel({
 
   const handleCopy = useCallback(
     async (onCopied?: () => void) => {
-      const text = displayedImprovedPrompt || originalPrompt
+      const text = resultPrompt || originalPrompt
       if (!text) {
         return
       }
@@ -143,30 +143,17 @@ export function PromptAnalyzerPanel({
         toast.error('Copy failed', { description: 'Could not access clipboard' })
       }
     },
-    [displayedImprovedPrompt, originalPrompt]
+    [resultPrompt, originalPrompt]
   )
 
-  const handleSave = useCallback(async () => {
-    if (!displayedImprovedPrompt) {
+  const handleSave = useCallback(() => {
+    if (!resultPrompt) {
       return
     }
 
-    try {
-      const result = await window.api.fs.saveDownloadedFile({
-        suggestedName: 'improved-prompt.md',
-        content: displayedImprovedPrompt,
-        encoding: 'utf8'
-      })
-      if (result.canceled) {
-        return
-      }
-      toast.success('Prompt saved', { description: `Saved to ${result.destinationPath}` })
-    } catch (err) {
-      toast.error('Save failed', {
-        description: err instanceof Error ? err.message : 'Could not save improved prompt'
-      })
-    }
-  }, [displayedImprovedPrompt])
+    updatePrompt(resultPrompt)
+    dismissResult()
+  }, [resultPrompt, updatePrompt, dismissResult])
 
   const handlePromptChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -365,7 +352,6 @@ export function PromptAnalyzerPanel({
             <PromptAnalyzerResult
               prompt={displayedImprovedPrompt}
               isTruncated={isImprovedPromptTruncated}
-              onCopy={() => void handleCopy()}
               onCopyAndUse={() => void handleCopy(onClose)}
               onSave={() => void handleSave()}
               onEdit={dismissResult}

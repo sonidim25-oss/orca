@@ -1,4 +1,4 @@
-import { Check, Copy, Save, Sparkles, X } from 'lucide-react'
+import { Check, Save, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -8,7 +8,6 @@ import { translate } from '@/i18n/i18n'
 type PromptAnalyzerResultProps = {
   prompt: string
   isTruncated: boolean
-  onCopy: () => void
   onCopyAndUse: () => void
   onSave: () => void
   onEdit: () => void
@@ -17,34 +16,16 @@ type PromptAnalyzerResultProps = {
 export function PromptAnalyzerResult({
   prompt,
   isTruncated,
-  onCopy,
   onCopyAndUse,
   onSave,
   onEdit
 }: PromptAnalyzerResultProps): React.JSX.Element {
   return (
     <div className="mt-4 flex flex-col gap-3 border-t border-prompt-analyzer-border pt-4">
-      <div className="flex items-center justify-between">
-        <label className="text-[12px] font-medium text-prompt-analyzer-muted-foreground flex items-center gap-1.5">
-          <Sparkles className="size-3.5 text-prompt-analyzer-accent" strokeWidth={2} />
-          {translate('promptAnalyzer.panel.improvedLabel', 'Improved Prompt')}
-        </label>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onCopy}
-              className="text-prompt-analyzer-muted-foreground hover:text-prompt-analyzer-accent"
-            >
-              <Copy className="size-4" strokeWidth={2} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">
-            {translate('promptAnalyzer.panel.copyTooltip', 'Copy improved prompt')}
-          </TooltipContent>
-        </Tooltip>
-      </div>
+      <label className="text-[12px] font-medium text-prompt-analyzer-muted-foreground flex items-center gap-1.5">
+        <Sparkles className="size-3.5 text-prompt-analyzer-accent" strokeWidth={2} />
+        {translate('promptAnalyzer.panel.improvedLabel', 'Improved Prompt')}
+      </label>
 
       <Textarea
         value={prompt}
