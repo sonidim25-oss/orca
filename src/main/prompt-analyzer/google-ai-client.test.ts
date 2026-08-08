@@ -31,7 +31,7 @@ describe('analyzeWithGoogleAI', () => {
     vi.unstubAllGlobals()
   })
 
-  it('uses the encoded model path and API key query parameter', async () => {
+  it('sends the API key in the x-goog-api-key header instead of the URL query', async () => {
     const fetchMock = vi.fn().mockResolvedValue(successfulResponse())
     vi.stubGlobal('fetch', fetchMock)
 
@@ -41,8 +41,8 @@ describe('analyzeWithGoogleAI', () => {
     const requestUrl = new URL(String(url))
     expect(requestUrl.origin).toBe('https://generativelanguage.googleapis.com')
     expect(requestUrl.pathname).toBe('/v1beta/models/gemini-2.5-flash:generateContent')
-    expect(requestUrl.searchParams.get('key')).toBe('secret key/+')
-    expect([...requestUrl.searchParams.keys()]).toEqual(['key'])
+    expect([...requestUrl.searchParams.keys()]).toEqual([])
+    expect(new Headers(init.headers).get('x-goog-api-key')).toBe('secret key/+')
     expect(init.method).toBe('POST')
   })
 

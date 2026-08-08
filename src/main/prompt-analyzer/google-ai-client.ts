@@ -111,12 +111,15 @@ export async function analyzeWithGoogleAI(
 ): Promise<PromptAnalyzerAnalyzeResult> {
   validateArgs(args)
 
-  const url = `${GOOGLE_AI_API_URL}/${encodeURIComponent(args.model.trim())}:generateContent?key=${encodeURIComponent(apiKey)}`
+  const url = `${GOOGLE_AI_API_URL}/${encodeURIComponent(args.model.trim())}:generateContent`
 
   const response = await fetch(url, {
     method: 'POST',
     signal,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey
+    },
     body: JSON.stringify({
       systemInstruction: {
         parts: [{ text: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT }]
