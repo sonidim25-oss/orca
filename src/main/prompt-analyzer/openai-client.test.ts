@@ -17,6 +17,13 @@ function successResponse(): Response {
   )
 }
 
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    ...init
+  })
+}
+
 describe('analyzeWithOpenAI', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -62,4 +69,35 @@ describe('analyzeWithOpenAI', () => {
       expect(body).not.toHaveProperty('temperature')
     }
   )
+
+  it('uses raw error metadata and redacts every API key occurrence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
+            { status: 401 }
+          )
+        )
+    )
+
+    await expect(
+      analyzeWithOpenAI(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+  })
+
+  it('extracts nested error details without a top-level message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: { error: { message: 'Invalid secret-key' } } }))
+    )
+
+    await expect(
+      analyzeWithOpenAI(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Invalid [REDACTED]')
+  })
 })

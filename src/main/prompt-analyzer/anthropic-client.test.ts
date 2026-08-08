@@ -136,6 +136,37 @@ describe('analyzeWithAnthropic', () => {
     ).rejects.toThrow('Rejected [REDACTED]')
   })
 
+  it('uses raw error metadata and redacts every API key occurrence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
+            { status: 401 }
+          )
+        )
+    )
+
+    await expect(
+      analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+  })
+
+  it('extracts nested error details without a top-level message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: { error: { message: 'Invalid secret-key' } } }))
+    )
+
+    await expect(
+      analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow('Invalid [REDACTED]')
+  })
+
   it('reports the HTTP status for non-JSON error responses', async () => {
     vi.stubGlobal(
       'fetch',

@@ -9,10 +9,6 @@ import { DEFAULT_SYSTEM_PROMPT } from './constants'
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
-const openAIErrorResponseSchema = z.object({
-  error: z.object({ message: z.string().trim().min(1) })
-})
-
 const openAISuccessResponseSchema = z.object({
   choices: z
     .array(
@@ -26,6 +22,54 @@ const openAISuccessResponseSchema = z.object({
 
 function redactApiKey(message: string, apiKey: string): string {
   return apiKey ? message.replaceAll(apiKey, '[REDACTED]') : message
+}
+
+function extractErrorDetail(value: unknown, depth = 0): string | undefined {
+  if (depth > 5) {
+    return undefined
+  }
+  if (typeof value === 'string') {
+    return value.trim() || undefined
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const detail = extractErrorDetail(item, depth + 1)
+      if (detail) {
+        return detail
+      }
+    }
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+
+  const error = value as Record<string, unknown>
+  const metadata = error.metadata
+  if (typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
+    const detail = extractErrorDetail((metadata as Record<string, unknown>).raw, depth + 1)
+    if (detail) {
+      return detail
+    }
+  }
+  for (const key of ['raw', 'message', 'error', 'details', 'detail']) {
+    const detail = extractErrorDetail(error[key], depth + 1)
+    if (detail) {
+      return detail
+    }
+  }
+  return undefined
+}
+
+function getOpenAIErrorMessage(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || !('error' in body)) {
+    return undefined
+  }
+  const error = (body as Record<string, unknown>).error
+  if (typeof error !== 'object' || error === null || Array.isArray(error)) {
+    return undefined
+  }
+  return extractErrorDetail(error)
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {
@@ -88,18 +132,15 @@ export async function analyzeWithOpenAI(
 
   const body = await parseResponseBody(response)
   if (!response.ok) {
-    const errorResponse = openAIErrorResponseSchema.safeParse(body)
-    const message = errorResponse.success
-      ? errorResponse.data.error.message
-      : `OpenAI API error: ${response.status}`
+    const message = getOpenAIErrorMessage(body) ?? `OpenAI API error: ${response.status}`
     throw new Error(redactApiKey(message, apiKey))
   }
   if (hasErrorField(body)) {
-    const errorResponse = openAIErrorResponseSchema.safeParse(body)
-    if (!errorResponse.success) {
+    const message = getOpenAIErrorMessage(body)
+    if (!message) {
       throw new Error('OpenAI returned an invalid response')
     }
-    throw new Error(redactApiKey(errorResponse.data.error.message, apiKey))
+    throw new Error(redactApiKey(message, apiKey))
   }
 
   const successResponse = openAISuccessResponseSchema.safeParse(body)
