@@ -105,6 +105,137 @@ describe('analyzeWithOpenRouter', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  it('retries HTTP 502 responses and succeeds on the third attempt', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const signal = new AbortController().signal
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', signal)
+    void analysis.catch(() => undefined)
+    await vi.runAllTimersAsync()
+
+    await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.signal).toBe(signal)
+    }
+  })
+
+  it.each([500, 503, 504])(
+    'retries HTTP %i responses and succeeds on the third attempt',
+    async (status) => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('Transient failure', { status }))
+        .mockResolvedValueOnce(new Response('Transient failure', { status }))
+        .mockResolvedValueOnce(
+          jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+      await vi.runAllTimersAsync()
+
+      await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  it('retries a transient fetch rejection', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    void analysis.catch(() => undefined)
+    await vi.runAllTimersAsync()
+
+    await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rethrows the final fetch rejection after three attempts', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const networkError = new TypeError('fetch failed')
+    const fetchMock = vi.fn().mockRejectedValue(networkError)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    const rejection = expect(analysis).rejects.toBe(networkError)
+    await vi.runAllTimersAsync()
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses Retry-After before retrying a transient response', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('Unavailable', { status: 503, headers: { 'Retry-After': '2' } })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Improved after retry' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+
+    await expect(analysis).resolves.toMatchObject({ improvedPrompt: 'Improved after retry' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces the final transient response after three attempts', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi.fn().mockResolvedValue(new Response('Unavailable', { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    const rejection = expect(analysis).rejects.toThrow('OpenRouter API error: 503')
+    await vi.runAllTimersAsync()
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('stops retrying when aborted during backoff', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const abortReason = new Error('cancelled')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('Unavailable', { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', controller.signal)
+    await vi.advanceTimersByTimeAsync(0)
+    controller.abort(abortReason)
+
+    await expect(analysis).rejects.toBe(abortReason)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps raw rate-limit details and adds guidance after three attempts', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0)
@@ -133,23 +264,41 @@ describe('analyzeWithOpenRouter', () => {
   })
 
   it('suggests the reliable default when OpenRouter rejects an invalid model', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse(
-            { error: { code: 400, message: 'google/gemma-4-31b is not a valid model ID' } },
-            { status: 400 }
-          )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(
+          { error: { code: 400, message: 'google/gemma-4-31b is not a valid model ID' } },
+          { status: 400 }
         )
-    )
+      )
+    vi.stubGlobal('fetch', fetchMock)
 
     await expect(
       analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
     ).rejects.toThrow(
       'google/gemma-4-31b is not a valid model ID. Choose a valid model in Settings; try openrouter/auto-beta.'
     )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a missing model response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(
+          { error: { code: 404, message: 'The requested model was not found' } },
+          { status: 404 }
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    ).rejects.toThrow(
+      'The requested model was not found. Choose a valid model in Settings; try openrouter/auto-beta.'
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('prefers trimmed OpenRouter metadata details for rate limit errors', async () => {
@@ -175,29 +324,33 @@ describe('analyzeWithOpenRouter', () => {
   })
 
   it('falls back to the message for message-only OpenRouter errors', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse({ error: { message: 'Rejected secret-key' } }, { status: 401 })
-        )
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ error: { message: 'Rejected secret-key' } }, { status: 401 })
+      )
+    vi.stubGlobal('fetch', fetchMock)
 
     await expect(
       analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
     ).rejects.toThrow('Rejected [REDACTED]')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('reports the HTTP status for non-JSON error responses', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 502 }))
-    )
+  it('retries then reports the HTTP status for non-JSON error responses', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 502 }))
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(
-      analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('OpenRouter API error: 502')
+    const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+    const rejection = expect(analysis).rejects.toThrow('OpenRouter API error: 502')
+    await vi.runAllTimersAsync()
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('rejects non-JSON success responses', async () => {

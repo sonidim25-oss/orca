@@ -12,6 +12,7 @@ import { assertPromptAnalyzerClientProvider } from './supported-provider'
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const MAX_ATTEMPTS = 3
 const RETRY_BASE_DELAY_MS = 250
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504])
 const DEFAULT_SYSTEM_PROMPT =
   "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
 
@@ -56,8 +57,8 @@ function isInvalidModelError(status: number, message: string): boolean {
   )
 }
 
-function getRetryDelayMs(response: Response, retryIndex: number): number {
-  const retryAfterSeconds = Number(response.headers.get('Retry-After'))
+function getRetryDelayMs(response: Response | undefined, retryIndex: number): number {
+  const retryAfterSeconds = Number(response?.headers.get('Retry-After'))
   const retryAfterMs =
     Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : 0
   const backoffMs = RETRY_BASE_DELAY_MS * 2 ** retryIndex
@@ -88,16 +89,25 @@ async function requestWithRetries(
   body: string
 ): Promise<Response> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      body
-    })
-    if (response.status !== 429 || attempt === MAX_ATTEMPTS - 1) {
+    let response: Response
+    try {
+      response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body
+      })
+    } catch (error) {
+      if (signal.aborted || attempt === MAX_ATTEMPTS - 1) {
+        throw error
+      }
+      await waitForRetry(getRetryDelayMs(undefined, attempt), signal)
+      continue
+    }
+    if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === MAX_ATTEMPTS - 1) {
       return response
     }
     await waitForRetry(getRetryDelayMs(response, attempt), signal)
