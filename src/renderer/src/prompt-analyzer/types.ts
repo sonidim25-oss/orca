@@ -5,12 +5,6 @@ import type {
 
 export type AnalyzeResult = PromptAnalyzerAnalyzeResult
 
-export type AnalyzeRequest = {
-  prompt: string
-  systemPrompt?: string
-  signal?: AbortSignal
-}
-
 export type { SupportedProvider } from '../../../shared/prompt-analyzer-types'
 
 export type PromptAnalyzerState = 'idle' | 'processing' | 'success' | 'error'

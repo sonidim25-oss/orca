@@ -1,6 +1,5 @@
 export { usePromptAnalyzer } from './usePromptAnalyzer'
 export type {
-  AnalyzeRequest,
   AnalyzeResult,
   AnalyzeOptions,
   PromptAnalyzerState,
