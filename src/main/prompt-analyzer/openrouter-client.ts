@@ -147,8 +147,8 @@ export async function analyzeWithOpenRouter(
     apiKey,
     signal,
     JSON.stringify({
-      models: [...new Set([primaryModel, PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL])],
-      provider: { allow_fallbacks: true },
+      models: [primaryModel],
+      provider: { allow_fallbacks: false },
       messages: [
         { role: 'system', content: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
         { role: 'user', content: args.prompt }

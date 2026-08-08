@@ -41,8 +41,8 @@ describe('analyzeWithOpenRouter', () => {
     const [, init] = fetchMock.mock.calls[0]
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer secret-key')
     expect(JSON.parse(String(init.body))).toEqual({
-      models: ['test-model', 'openrouter/auto-beta'],
-      provider: { allow_fallbacks: true },
+      models: ['test-model'],
+      provider: { allow_fallbacks: false },
       messages: [
         {
           role: 'system',
@@ -52,6 +52,34 @@ describe('analyzeWithOpenRouter', () => {
         { role: 'user', content: 'Improve this' }
       ]
     })
+  })
+
+  it('sends only the user-selected model', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: 'Use a specific request.' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(String(init.body)).models).toEqual(['test-model'])
+  })
+
+  it('disables OpenRouter provider fallbacks', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: 'Use a specific request.' } }] })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(String(init.body)).provider).toEqual({ allow_fallbacks: false })
   })
 
   it('retries HTTP 429 responses and succeeds on the third attempt', async () => {
