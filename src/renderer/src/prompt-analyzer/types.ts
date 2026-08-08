@@ -1,6 +1,5 @@
 import type {
   PromptAnalyzerAnalyzeResult,
-  PromptAnalyzerConfig,
   SupportedProvider
 } from '../../../shared/prompt-analyzer-types'
 
@@ -27,7 +26,7 @@ export type AnalyzerProvider = {
   config: ProviderConfig
 }
 
-export type { SupportedProvider, PromptAnalyzerConfig } from '../../../shared/prompt-analyzer-types'
+export type { SupportedProvider } from '../../../shared/prompt-analyzer-types'
 export type PromptAnalyzerProvider = SupportedProvider
 
 export type PromptAnalyzerState = 'idle' | 'processing' | 'success' | 'error'
@@ -51,7 +50,6 @@ export type PromptAnalyzerSlice = {
   improvedPrompt: string
   lastSuccessfulResult: PromptAnalyzerResultSnapshot | null
   error: string | null
-  config: PromptAnalyzerConfig | null
   requestId: number
 
   setPanelOpen: (open: boolean) => void
@@ -60,8 +58,6 @@ export type PromptAnalyzerSlice = {
   reportMissingApiKey: () => void
   dismissResult: () => void
   analyzePrompt: (prompt: string, options?: AnalyzeOptions) => Promise<AnalyzeResult | null>
-  setConfig: (config: Partial<PromptAnalyzerConfig> | null) => void
-  setModel: (model: string) => void
   togglePanel: () => void
   reset: () => void
 }

@@ -7,7 +7,6 @@ export type {
   ProviderConfig,
   OpenRouterConfig,
   PromptAnalyzerProvider,
-  PromptAnalyzerConfig,
   PromptAnalyzerState,
   PromptAnalyzerSlice,
   SupportedProvider

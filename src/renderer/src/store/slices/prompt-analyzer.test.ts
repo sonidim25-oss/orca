@@ -2,10 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { create } from 'zustand'
 import { createPromptAnalyzerSlice } from './prompt-analyzer'
 import type { AppState } from '../types'
-import type { PromptAnalyzerConfig } from '@/prompt-analyzer'
-
-const INVALID_CONFIG_ERROR =
-  'Prompt analyzer config requires a supported provider and non-empty model'
 
 function createTestStore() {
   return create<AppState>()(
@@ -31,7 +27,7 @@ describe('PromptAnalyzerSlice', () => {
     store = createTestStore()
   })
 
-  it('1. Initial state', () => {
+  it('has the expected initial state', () => {
     const state = store.getState()
     expect(state.isPanelOpen).toBe(false)
     expect(state.hasWarned).toBe(false)
@@ -40,10 +36,9 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.improvedPrompt).toBe('')
     expect(state.lastSuccessfulResult).toBeNull()
     expect(state.error).toBeNull()
-    expect(state.config).toBeNull()
   })
 
-  it('2. togglePanel flips isPanelOpen', () => {
+  it('togglePanel flips isPanelOpen', () => {
     store.getState().togglePanel()
     expect(store.getState().isPanelOpen).toBe(true)
 
@@ -135,7 +130,7 @@ describe('PromptAnalyzerSlice', () => {
     })
   })
 
-  it('3. updatePrompt and dismissResult own their complete transitions', () => {
+  it('updatePrompt and dismissResult own their complete transitions', () => {
     store.setState({
       state: 'success',
       originalPrompt: 'orig',
@@ -164,92 +159,15 @@ describe('PromptAnalyzerSlice', () => {
     })
   })
 
-  it('5. setHasWarned tracks the session warning', () => {
+  it('setHasWarned tracks the session warning', () => {
     store.getState().setHasWarned(true)
     expect(store.getState().hasWarned).toBe(true)
   })
 
-  it('6. setConfig partial merge', () => {
-    const initialConfig: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4'
-    }
-
-    store.getState().setConfig(initialConfig)
-    expect(store.getState().config).toEqual(initialConfig)
-
-    store.getState().setConfig({ systemPrompt: 'Improve only.' })
-    expect(store.getState().config?.systemPrompt).toBe('Improve only.')
-    expect(store.getState().config?.provider).toBe('openrouter')
-
-    store.getState().setConfig(null)
-    expect(store.getState().config).toBeNull()
-  })
-
-  it('7. setConfig rejects a partial config when config is null', () => {
-    expect(() => store.getState().setConfig({ systemPrompt: 'Improve only.' })).toThrowError(
-      INVALID_CONFIG_ERROR
-    )
-
-    expect(store.getState().config).toBeNull()
-  })
-
-  it('8. setConfig rejects invalid values', () => {
-    const validConfig: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4'
-    }
-    const invalidUpdates: Partial<PromptAnalyzerConfig>[] = [{ model: '' }, { model: '   ' }]
-
-    for (const update of invalidUpdates) {
-      expect(() => store.getState().setConfig({ ...validConfig, ...update })).toThrowError(
-        INVALID_CONFIG_ERROR
-      )
-      expect(store.getState().config).toBeNull()
-    }
-
-    store.getState().setConfig(validConfig)
-    for (const update of invalidUpdates) {
-      expect(() => store.getState().setConfig(update)).toThrowError(INVALID_CONFIG_ERROR)
-      expect(store.getState().config).toEqual(validConfig)
-    }
-  })
-
-  it('10. setModel', () => {
-    const initialConfig: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'anthropic/old-model'
-    }
-    store.getState().setConfig(initialConfig)
-
-    store.getState().setModel('new-model')
-    expect(store.getState().config?.model).toBe('new-model')
-  })
-
-  it('11. setModel rejects invalid updates', () => {
-    expect(() => store.getState().setModel('new-model')).toThrowError(INVALID_CONFIG_ERROR)
-
-    expect(store.getState().config).toBeNull()
-
-    const config: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4'
-    }
-    store.getState().setConfig(config)
-
-    expect(() => store.getState().setModel('')).toThrowError(INVALID_CONFIG_ERROR)
-    expect(() => store.getState().setModel('   ')).toThrowError(INVALID_CONFIG_ERROR)
-    expect(store.getState().config).toEqual(config)
-  })
-
-  it('12. reset returns to initial state', () => {
+  it('reset returns to initial state', () => {
     store.getState().togglePanel()
     store.getState().setHasWarned(true)
     store.setState({ state: 'processing', requestId: 7 })
-    store.getState().setConfig({
-      provider: 'openrouter',
-      model: 'openai/y'
-    })
 
     store.getState().reset()
 
@@ -261,7 +179,6 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.improvedPrompt).toBe('')
     expect(state.lastSuccessfulResult).toBeNull()
     expect(state.error).toBeNull()
-    expect(state.config).toBeNull()
     expect(state.requestId).toBe(8)
     expect(window.api.promptAnalyzer.cancel).toHaveBeenCalledOnce()
   })
@@ -298,6 +215,28 @@ describe('PromptAnalyzerSlice', () => {
         }
       } as AppState['settings']
     })
+
+    await store.getState().analyzePrompt('Original')
+
+    expect(window.api.promptAnalyzer.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4' })
+    )
+  })
+
+  it('ignores stale slice config when resolving provider and model', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+    store.setState({
+      config: { provider: 'openrouter', model: 'stale-model' },
+      settings: {
+        promptAnalyzerProvider: 'anthropic',
+        promptAnalyzerProviders: {
+          anthropic: { model: 'claude-sonnet-4' }
+        }
+      } as AppState['settings']
+    } as unknown as Partial<AppState>)
 
     await store.getState().analyzePrompt('Original')
 
