@@ -2,7 +2,7 @@ import { test, expect } from './helpers/orca-app'
 import { waitForSessionReady } from './helpers/store'
 
 test.describe('Settings sidebar search on the Shortcuts pane', () => {
-  test('keeps the shortcut hint outside the search text content box', async ({ orcaPage }) => {
+  test('keeps the search icon outside the input text content box', async ({ orcaPage }) => {
     await waitForSessionReady(orcaPage)
 
     await orcaPage.evaluate(() => {
@@ -17,22 +17,28 @@ test.describe('Settings sidebar search on the Shortcuts pane', () => {
     await expect(searchInput).toBeVisible()
 
     const layout = await searchInput.evaluate((input) => {
-      const shortcut = input.parentElement?.querySelector<HTMLElement>(':scope > span')
-      if (!shortcut) {
-        throw new Error('Settings search shortcut hint is not available')
+      const lateInputPadding = document.createElement('style')
+      lateInputPadding.textContent = '.px-3 { padding-inline: calc(var(--spacing) * 3); }'
+      document.head.append(lateInputPadding)
+
+      const icon = input.parentElement?.querySelector<SVGSVGElement>(':scope > svg')
+      if (!icon) {
+        throw new Error('Settings search icon is not available')
       }
 
       const inputRect = input.getBoundingClientRect()
-      const shortcutRect = shortcut.getBoundingClientRect()
-      const paddingRight = Number.parseFloat(getComputedStyle(input).paddingRight)
+      const iconRect = icon.getBoundingClientRect()
+      const inputStyle = getComputedStyle(input)
+      const borderLeft = Number.parseFloat(inputStyle.borderLeftWidth)
+      const paddingLeft = Number.parseFloat(inputStyle.paddingLeft)
 
       return {
-        contentRight: inputRect.right - paddingRight,
-        shortcutLeft: shortcutRect.left
+        iconRight: iconRect.right,
+        textStart: inputRect.left + borderLeft + paddingLeft
       }
     })
 
-    expect(layout.shortcutLeft).toBeGreaterThanOrEqual(layout.contentRight)
+    expect(layout.textStart).toBeGreaterThanOrEqual(layout.iconRight)
   })
 
   test('pane-title-only query keeps rows visible and local search usable', async ({ orcaPage }) => {

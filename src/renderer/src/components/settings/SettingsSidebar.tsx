@@ -211,7 +211,7 @@ export function SettingsSidebar({
               'auto.components.settings.SettingsSidebar.dbceaa8840',
               'Search settings'
             )}
-            className="bg-background/60 pl-9 pr-20 text-[13px]"
+            className="bg-background/60 !pl-9 pr-14 text-[13px]"
           />
           {searchQuery === '' ? (
             <span className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
