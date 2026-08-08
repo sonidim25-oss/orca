@@ -5,29 +5,13 @@ import type {
 
 export type AnalyzeResult = PromptAnalyzerAnalyzeResult
 
-export type ProviderConfig = {
-  apiKey: string
-  model: string
-}
-
-export type OpenRouterConfig = ProviderConfig & {
-  siteUrl?: string
-  siteName?: string
-}
-
 export type AnalyzeRequest = {
   prompt: string
   systemPrompt?: string
   signal?: AbortSignal
 }
 
-export type AnalyzerProvider = {
-  analyze(request: AnalyzeRequest): Promise<AnalyzeResult>
-  config: ProviderConfig
-}
-
 export type { SupportedProvider } from '../../../shared/prompt-analyzer-types'
-export type PromptAnalyzerProvider = SupportedProvider
 
 export type PromptAnalyzerState = 'idle' | 'processing' | 'success' | 'error'
 
