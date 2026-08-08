@@ -19,8 +19,6 @@ export type OpenRouterConfig = ProviderConfig & {
 export type AnalyzeRequest = {
   prompt: string
   systemPrompt?: string
-  maxTokens?: number
-  temperature?: number
   signal?: AbortSignal
 }
 
@@ -42,8 +40,6 @@ export type PromptAnalyzerResultSnapshot = {
 export type AnalyzeOptions = {
   provider?: SupportedProvider
   model?: string
-  maxTokens?: number
-  temperature?: number
   systemPrompt?: string
 }
 

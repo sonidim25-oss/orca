@@ -5,9 +5,7 @@ import { analyzeWithOpenRouter } from './openrouter-client'
 const args: PromptAnalyzerAnalyzeArgs = {
   prompt: 'Improve this',
   provider: 'openrouter',
-  model: 'test-model',
-  maxTokens: 2048,
-  temperature: 0.3
+  model: 'test-model'
 }
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -42,11 +40,17 @@ describe('analyzeWithOpenRouter', () => {
 
     const [, init] = fetchMock.mock.calls[0]
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer secret-key')
-    expect(JSON.parse(String(init.body))).toMatchObject({
+    expect(JSON.parse(String(init.body))).toEqual({
       models: ['test-model', 'openrouter/auto-beta'],
       provider: { allow_fallbacks: true },
-      max_tokens: 2048,
-      temperature: 0.3
+      messages: [
+        {
+          role: 'system',
+          content:
+            "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
+        },
+        { role: 'user', content: 'Improve this' }
+      ]
     })
   })
 

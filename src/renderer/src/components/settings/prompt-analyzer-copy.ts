@@ -55,11 +55,3 @@ export function getPromptAnalyzerModelDescription(provider: SupportedProvider): 
 export function getPromptAnalyzerModelPlaceholder(provider: SupportedProvider): string {
   return PROVIDER_MODEL_PLACEHOLDERS[provider]
 }
-
-export function getTemperatureLabel(): string {
-  return 'Temperature'
-}
-
-export function getMaxTokensLabel(): string {
-  return 'Max tokens'
-}

@@ -44,14 +44,6 @@ export function getPromptAnalyzerSearchKeywords(): string[] {
       key: 'auto.components.settings.prompt-analyzer-settings-search.googleAi',
       fallback: 'google ai',
       englishOnly: true
-    },
-    {
-      key: 'auto.components.settings.prompt-analyzer-settings-search.temperature',
-      fallback: 'temperature'
-    },
-    {
-      key: 'auto.components.settings.prompt-analyzer-settings-search.maxTokens',
-      fallback: 'max tokens'
     }
   ])
 }

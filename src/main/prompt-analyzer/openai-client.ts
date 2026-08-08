@@ -2,13 +2,7 @@ import type {
   PromptAnalyzerAnalyzeArgs,
   PromptAnalyzerAnalyzeResult
 } from '../../shared/prompt-analyzer-types'
-import {
-  PROMPT_ANALYZER_PROMPT_MAX_CHARS,
-  PROMPT_ANALYZER_MAX_TOKENS_MAX,
-  PROMPT_ANALYZER_MAX_TOKENS_MIN,
-  PROMPT_ANALYZER_TEMPERATURE_MAX,
-  PROMPT_ANALYZER_TEMPERATURE_MIN
-} from '../../shared/prompt-analyzer-types'
+import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../shared/prompt-analyzer-types'
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
@@ -62,20 +56,6 @@ function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
   if (!args.model?.trim()) {
     throw new Error('Prompt analyzer model is not configured. Set a model in Settings.')
   }
-  if (
-    !Number.isInteger(args.maxTokens) ||
-    args.maxTokens < PROMPT_ANALYZER_MAX_TOKENS_MIN ||
-    args.maxTokens > PROMPT_ANALYZER_MAX_TOKENS_MAX
-  ) {
-    throw new Error('Prompt analyzer max tokens must be between 1 and 32768')
-  }
-  if (
-    !Number.isFinite(args.temperature) ||
-    args.temperature < PROMPT_ANALYZER_TEMPERATURE_MIN ||
-    args.temperature > PROMPT_ANALYZER_TEMPERATURE_MAX
-  ) {
-    throw new Error('Prompt analyzer temperature must be between 0 and 2')
-  }
 }
 
 export async function analyzeWithOpenAI(
@@ -102,9 +82,7 @@ export async function analyzeWithOpenAI(
       messages: [
         { role: 'system', content: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
         { role: 'user', content: args.prompt }
-      ],
-      max_tokens: args.maxTokens,
-      temperature: args.temperature
+      ]
     })
   })
 

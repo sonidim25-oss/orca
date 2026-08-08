@@ -45,9 +45,7 @@ describe('Prompt Analyzer Integration', () => {
     expect(analyze).toHaveBeenCalledWith({
       prompt: 'Test prompt',
       provider: 'openrouter',
-      model: 'test-model',
-      maxTokens: 2048,
-      temperature: 0.3
+      model: 'test-model'
     })
     expect(useAppStore.getState().improvedPrompt).toBe('Integration test suggestion')
     expect(useAppStore.getState().state).toBe('success')

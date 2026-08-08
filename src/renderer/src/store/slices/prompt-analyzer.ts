@@ -13,12 +13,6 @@ import {
   type OpenAIConfig
 } from '../../../../shared/prompt-analyzer-types'
 
-const MAX_MAX_TOKENS = 32_768
-const MIN_MAX_TOKENS = 1
-const MIN_TEMPERATURE = 0
-const MAX_TEMPERATURE = 2
-const DEFAULT_MAX_TOKENS = 2048
-const DEFAULT_TEMPERATURE = 0.3
 const MISSING_API_KEY_ERROR =
   'OpenRouter API key not configured. Please add it in Settings > Prompt Analyzer.'
 
@@ -37,16 +31,7 @@ const getInitialState = () => ({
 const validateBaseConfig = (
   config: Partial<PromptAnalyzerConfig>
 ): config is PromptAnalyzerConfig =>
-  typeof config.model === 'string' &&
-  config.model.trim().length > 0 &&
-  typeof config.temperature === 'number' &&
-  Number.isFinite(config.temperature) &&
-  config.temperature >= MIN_TEMPERATURE &&
-  config.temperature <= MAX_TEMPERATURE &&
-  typeof config.maxTokens === 'number' &&
-  Number.isInteger(config.maxTokens) &&
-  config.maxTokens >= MIN_MAX_TOKENS &&
-  config.maxTokens <= MAX_MAX_TOKENS
+  typeof config.model === 'string' && config.model.trim().length > 0
 
 const isPromptAnalyzerConfig = (
   config: Partial<PromptAnalyzerConfig>
@@ -75,7 +60,7 @@ const isPromptAnalyzerConfig = (
 }
 
 const INVALID_CONFIG_ERROR =
-  'Prompt analyzer config requires a supported provider, non-empty model, temperature between 0 and 2, and maxTokens between 1 and 32768'
+  'Prompt analyzer config requires a supported provider and non-empty model'
 
 function getClosedPanelState(state: AppState) {
   const result = state.lastSuccessfulResult
@@ -91,19 +76,6 @@ function getClosedPanelState(state: AppState) {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Prompt analysis failed with an unknown error'
-}
-
-function validateAnalysisOptions(maxTokens: number, temperature: number): void {
-  if (!Number.isInteger(maxTokens) || maxTokens < MIN_MAX_TOKENS || maxTokens > MAX_MAX_TOKENS) {
-    throw new Error('Prompt analyzer max tokens must be between 1 and 32768')
-  }
-  if (
-    !Number.isFinite(temperature) ||
-    temperature < MIN_TEMPERATURE ||
-    temperature > MAX_TEMPERATURE
-  ) {
-    throw new Error('Prompt analyzer temperature must be between 0 and 2')
-  }
 }
 
 export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAnalyzerSlice> = (
@@ -168,9 +140,6 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
         : provider === 'openrouter'
           ? PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL
           : null
-    const maxTokens = options?.maxTokens ?? config?.maxTokens ?? DEFAULT_MAX_TOKENS
-    const temperature = options?.temperature ?? config?.temperature ?? DEFAULT_TEMPERATURE
-
     const rejectInvalidInvocation = async (error: Error): Promise<null> => {
       await window.api.promptAnalyzer.cancel().catch(() => undefined)
       if (get().requestId !== requestId) {
@@ -186,12 +155,6 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       )
     }
 
-    try {
-      validateAnalysisOptions(maxTokens, temperature)
-    } catch (error) {
-      return rejectInvalidInvocation(new Error(getErrorMessage(error)))
-    }
-
     set({
       state: 'processing' as PromptAnalyzerState,
       originalPrompt: prompt,
@@ -203,9 +166,7 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
         prompt,
         provider,
         model,
-        systemPrompt: options?.systemPrompt,
-        maxTokens,
-        temperature
+        systemPrompt: options?.systemPrompt
       })
       if (!response.ok) {
         throw new Error(response.error)

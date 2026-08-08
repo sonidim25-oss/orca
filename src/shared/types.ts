@@ -2985,8 +2985,6 @@ export type GlobalSettings = {
   /** Prompt Analyzer settings */
   promptAnalyzerApiKeyConfigured?: boolean
   promptAnalyzerModel?: string
-  promptAnalyzerTemperature?: number
-  promptAnalyzerMaxTokens?: number
   promptAnalyzerProvider?: SupportedProvider
   promptAnalyzerProviders?: Partial<Record<SupportedProvider, PromptAnalyzerProviderSettings>>
 }
