@@ -163,13 +163,11 @@ describe('SettingsSidebar', () => {
     expect(markup).toContain('Onboarding checklist')
   })
 
-  it('search input has correct padding to prevent icon/shortcut collision', () => {
+  it('search input reserves space for its icon and shortcut', () => {
     const markup = renderSidebar()
 
-    // pl-9 = left padding for search icon (absolute left-3)
-    // pr-20 = right padding for shortcut combo (absolute right-2)
-    expect(markup).toContain('pl-9')
-    expect(markup).toContain('pr-20')
+    expect(markup).toContain('!pl-9')
+    expect(markup).toContain('pr-14')
   })
 
   it('shortcut combo renders only when search query is empty', () => {
