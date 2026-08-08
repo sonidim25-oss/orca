@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   errorToast: vi.fn(),
   successToast: vi.fn(),
+  getApiKeyStatus: vi.fn(),
   writeClipboardText: vi.fn(),
   state: {
     state: 'idle',
@@ -22,7 +23,13 @@ const mocks = vi.hoisted(() => ({
     } | null,
     error: null as string | null,
     settings: {
-      promptAnalyzerApiKeyConfigured: true
+      promptAnalyzerApiKeyConfigured: true,
+      promptAnalyzerProvider: undefined as
+        | 'openrouter'
+        | 'openai'
+        | 'anthropic'
+        | 'google_ai'
+        | undefined
     },
     updatePrompt: vi.fn(),
     setHasWarned: vi.fn(),
@@ -77,6 +84,8 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.improvedPrompt = ''
     mocks.state.lastSuccessfulResult = null
     mocks.state.error = null
+    mocks.state.settings.promptAnalyzerApiKeyConfigured = true
+    mocks.state.settings.promptAnalyzerProvider = undefined
     mocks.analyze.mockResolvedValue(null)
     Object.defineProperty(window, 'api', {
       configurable: true,
@@ -100,6 +109,47 @@ describe('PromptAnalyzerPanel', () => {
 
     await vi.waitFor(() => expect(mocks.analyze).toHaveBeenCalledWith('Improve this prompt'))
     expect(mocks.errorToast).not.toHaveBeenCalled()
+  })
+
+  it('disables Improve when the active provider has no API key', async () => {
+    mocks.state.settings.promptAnalyzerApiKeyConfigured = true
+    mocks.state.settings.promptAnalyzerProvider = 'openai'
+    mocks.getApiKeyStatus.mockResolvedValue({ configured: false })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        promptAnalyzer: { getApiKeyStatus: mocks.getApiKeyStatus },
+        ui: { writeClipboardText: mocks.writeClipboardText }
+      }
+    })
+
+    render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    const improveButton = screen.getByRole('button', { name: 'Improve' }) as HTMLButtonElement
+    await vi.waitFor(() => expect(mocks.getApiKeyStatus).toHaveBeenCalledWith('openai'))
+    expect(improveButton.disabled).toBe(true)
+    fireEvent.click(improveButton)
+    expect(mocks.analyze).not.toHaveBeenCalled()
+  })
+
+  it('enables Improve when the active provider has an API key', async () => {
+    mocks.state.settings.promptAnalyzerApiKeyConfigured = false
+    mocks.state.settings.promptAnalyzerProvider = 'openai'
+    mocks.getApiKeyStatus.mockResolvedValue({ configured: true })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        promptAnalyzer: { getApiKeyStatus: mocks.getApiKeyStatus },
+        ui: { writeClipboardText: mocks.writeClipboardText }
+      }
+    })
+
+    render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    const improveButton = screen.getByRole('button', { name: 'Improve' }) as HTMLButtonElement
+    await vi.waitFor(() => expect(improveButton.disabled).toBe(false))
+    fireEvent.click(improveButton)
+    await vi.waitFor(() => expect(mocks.analyze).toHaveBeenCalledWith('Improve this prompt'))
   })
 
   it('only owns the body scroll lock while the panel is open', () => {

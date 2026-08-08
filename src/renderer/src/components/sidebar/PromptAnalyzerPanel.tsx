@@ -8,7 +8,9 @@ import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { toast } from 'sonner'
 import { usePromptAnalyzer } from '@/prompt-analyzer'
+import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
+import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../../../shared/prompt-analyzer-types'
 import { PromptAnalyzerResult } from './PromptAnalyzerResult'
 
@@ -41,11 +43,39 @@ export function PromptAnalyzerPanel({
   const { analyze } = usePromptAnalyzer()
   const confirm = useConfirmationDialog()
   const [isWarningOpen, setIsWarningOpen] = useState(false)
+  const [activeApiKeyConfigured, setActiveApiKeyConfigured] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const activeProvider = settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
   const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
   const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const getApiKeyStatus = window.api?.promptAnalyzer?.getApiKeyStatus
+    if (!getApiKeyStatus) {
+      setActiveApiKeyConfigured(settings?.promptAnalyzerApiKeyConfigured === true)
+      return
+    }
+
+    let cancelled = false
+    setActiveApiKeyConfigured(false)
+    void getApiKeyStatus(activeProvider)
+      .then(({ configured }) => {
+        if (!cancelled) {
+          setActiveApiKeyConfigured(configured)
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeProvider, isOpen, settings?.promptAnalyzerApiKeyConfigured])
 
   // Focus textarea on open
   useEffect(() => {
@@ -77,15 +107,15 @@ export function PromptAnalyzerPanel({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, isWarningOpen, onClose])
 
-  const handleImprove = useCallback(async () => {
+  async function handleImprove(): Promise<void> {
     const prompt = originalPrompt.slice(0, PROMPT_ANALYZER_PROMPT_MAX_CHARS)
     if (!prompt.trim()) {
       return
     }
 
-    if (!useAppStore.getState().settings?.promptAnalyzerApiKeyConfigured) {
+    if (!activeApiKeyConfigured) {
       reportMissingApiKey()
-      toast.error('Missing API Key', {
+      toast.error(`Missing ${getProviderLabel(activeProvider)} API Key`, {
         description: 'Add your API key in Settings > Prompt Analyzer'
       })
       return
@@ -119,7 +149,7 @@ export function PromptAnalyzerPanel({
       const message = err instanceof Error ? err.message : 'Failed to improve prompt'
       toast.error('Improvement failed', { description: message })
     }
-  }, [originalPrompt, hasWarned, analyze, confirm, setHasWarned, reportMissingApiKey])
+  }
 
   const handleCopy = useCallback(
     async (onCopied?: () => void) => {
@@ -172,7 +202,6 @@ export function PromptAnalyzerPanel({
 
   const isProcessing = state === 'processing'
   const hasResult = Boolean(resultPrompt)
-  const hasApiKey = settings?.promptAnalyzerApiKeyConfigured === true
   const isImprovedPromptTruncated = resultPrompt.length > IMPROVED_PROMPT_DISPLAY_LIMIT
 
   return (
@@ -320,7 +349,12 @@ export function PromptAnalyzerPanel({
                     variant={isProcessing ? 'outline' : 'default'}
                     size="sm"
                     onClick={handleImprove}
-                    disabled={isProcessing || isWarningOpen || !originalPrompt.trim() || !hasApiKey}
+                    disabled={
+                      isProcessing ||
+                      isWarningOpen ||
+                      !originalPrompt.trim() ||
+                      !activeApiKeyConfigured
+                    }
                     className={cn(
                       'gap-1.5',
                       isProcessing &&
