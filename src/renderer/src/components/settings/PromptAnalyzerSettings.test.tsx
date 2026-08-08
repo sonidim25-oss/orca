@@ -49,6 +49,23 @@ describe('PromptAnalyzerSettings', () => {
     expect(updateSettings).toHaveBeenCalledWith({ promptAnalyzerProvider: 'anthropic' })
   })
 
+  it('does not expose sampling controls', () => {
+    Object.assign(window, {
+      api: {
+        promptAnalyzer: {
+          getApiKeyStatus: mocks.getApiKeyStatus,
+          saveApiKey: mocks.saveApiKey,
+          clearApiKey: mocks.clearApiKey
+        }
+      }
+    })
+
+    render(<PromptAnalyzerSettings settings={{} as GlobalSettings} updateSettings={vi.fn()} />)
+
+    expect(screen.queryByLabelText('Temperature')).toBeNull()
+    expect(screen.queryByLabelText('Max tokens')).toBeNull()
+  })
+
   it('stores a separate model for each provider', () => {
     Object.assign(window, {
       api: {

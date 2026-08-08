@@ -2,19 +2,14 @@ import type {
   PromptAnalyzerAnalyzeArgs,
   PromptAnalyzerAnalyzeResult
 } from '../../shared/prompt-analyzer-types'
-import {
-  PROMPT_ANALYZER_PROMPT_MAX_CHARS,
-  PROMPT_ANALYZER_MAX_TOKENS_MAX,
-  PROMPT_ANALYZER_MAX_TOKENS_MIN,
-  PROMPT_ANALYZER_TEMPERATURE_MAX,
-  PROMPT_ANALYZER_TEMPERATURE_MIN
-} from '../../shared/prompt-analyzer-types'
+import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../shared/prompt-analyzer-types'
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_API_VERSION = '2023-06-01'
+const ANTHROPIC_OUTPUT_TOKEN_LIMIT = 2048
 
 const anthropicErrorResponseSchema = z.object({
   error: z.object({ message: z.string().trim().min(1) })
@@ -61,20 +56,6 @@ function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
   if (!args.model?.trim()) {
     throw new Error('Prompt analyzer model is not configured. Set a model in Settings.')
   }
-  if (
-    !Number.isInteger(args.maxTokens) ||
-    args.maxTokens < PROMPT_ANALYZER_MAX_TOKENS_MIN ||
-    args.maxTokens > PROMPT_ANALYZER_MAX_TOKENS_MAX
-  ) {
-    throw new Error('Prompt analyzer max tokens must be between 1 and 32768')
-  }
-  if (
-    !Number.isFinite(args.temperature) ||
-    args.temperature < PROMPT_ANALYZER_TEMPERATURE_MIN ||
-    args.temperature > PROMPT_ANALYZER_TEMPERATURE_MAX
-  ) {
-    throw new Error('Prompt analyzer temperature must be between 0 and 2')
-  }
 }
 
 export async function analyzeWithAnthropic(
@@ -94,7 +75,7 @@ export async function analyzeWithAnthropic(
     },
     body: JSON.stringify({
       model: args.model.trim(),
-      max_tokens: args.maxTokens,
+      max_tokens: ANTHROPIC_OUTPUT_TOKEN_LIMIT,
       system: args.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: args.prompt }]
     })

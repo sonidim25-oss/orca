@@ -5,9 +5,7 @@ import { analyzeWithGoogleAI } from './google-ai-client'
 const args: PromptAnalyzerAnalyzeArgs = {
   prompt: 'Improve this',
   provider: 'google_ai',
-  model: ' gemini-2.5-flash ',
-  maxTokens: 2048,
-  temperature: 0.3
+  model: ' gemini-2.5-flash '
 }
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -63,11 +61,7 @@ describe('analyzeWithGoogleAI', () => {
       systemInstruction: {
         parts: [{ text: 'Return only the improved prompt.' }]
       },
-      contents: [{ role: 'user', parts: [{ text: 'Improve this' }] }],
-      generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0.3
-      }
+      contents: [{ role: 'user', parts: [{ text: 'Improve this' }] }]
     })
   })
 

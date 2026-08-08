@@ -5,7 +5,7 @@ import type { AppState } from '../types'
 import type { PromptAnalyzerConfig } from '@/prompt-analyzer'
 
 const INVALID_CONFIG_ERROR =
-  'Prompt analyzer config requires a supported provider, non-empty model, temperature between 0 and 2, and maxTokens between 1 and 32768'
+  'Prompt analyzer config requires a supported provider and non-empty model'
 
 function createTestStore() {
   return create<AppState>()(
@@ -172,16 +172,14 @@ describe('PromptAnalyzerSlice', () => {
   it('6. setConfig partial merge', () => {
     const initialConfig: PromptAnalyzerConfig = {
       provider: 'openrouter',
-      model: 'openai/gpt-4',
-      maxTokens: 100,
-      temperature: 0.5
+      model: 'openai/gpt-4'
     }
 
     store.getState().setConfig(initialConfig)
     expect(store.getState().config).toEqual(initialConfig)
 
-    store.getState().setConfig({ temperature: 0.7 })
-    expect(store.getState().config?.temperature).toBe(0.7)
+    store.getState().setConfig({ systemPrompt: 'Improve only.' })
+    expect(store.getState().config?.systemPrompt).toBe('Improve only.')
     expect(store.getState().config?.provider).toBe('openrouter')
 
     store.getState().setConfig(null)
@@ -189,7 +187,7 @@ describe('PromptAnalyzerSlice', () => {
   })
 
   it('7. setConfig rejects a partial config when config is null', () => {
-    expect(() => store.getState().setConfig({ temperature: 0.7 })).toThrowError(
+    expect(() => store.getState().setConfig({ systemPrompt: 'Improve only.' })).toThrowError(
       INVALID_CONFIG_ERROR
     )
 
@@ -199,22 +197,9 @@ describe('PromptAnalyzerSlice', () => {
   it('8. setConfig rejects invalid values', () => {
     const validConfig: PromptAnalyzerConfig = {
       provider: 'openrouter',
-      model: 'openai/gpt-4',
-      maxTokens: 100,
-      temperature: 0.5
+      model: 'openai/gpt-4'
     }
-    const invalidUpdates: Partial<PromptAnalyzerConfig>[] = [
-      { model: '' },
-      { model: '   ' },
-      { temperature: -0.1 },
-      { temperature: 2.1 },
-      { temperature: Number.NaN },
-      { maxTokens: 0 },
-      { maxTokens: -1 },
-      { maxTokens: 1.5 },
-      { maxTokens: 32_769 },
-      { maxTokens: Number.POSITIVE_INFINITY }
-    ]
+    const invalidUpdates: Partial<PromptAnalyzerConfig>[] = [{ model: '' }, { model: '   ' }]
 
     for (const update of invalidUpdates) {
       expect(() => store.getState().setConfig({ ...validConfig, ...update })).toThrowError(
@@ -230,42 +215,10 @@ describe('PromptAnalyzerSlice', () => {
     }
   })
 
-  it('9. setConfig accepts temperature boundaries', () => {
-    const config: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4',
-      maxTokens: 1,
-      temperature: 0
-    }
-
-    store.getState().setConfig(config)
-    expect(store.getState().config).toEqual(config)
-
-    store.getState().setConfig({ temperature: 2 })
-    expect(store.getState().config?.temperature).toBe(2)
-  })
-
-  it('accepts maxTokens boundaries', () => {
-    const config: PromptAnalyzerConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4',
-      maxTokens: 1,
-      temperature: 0.5
-    }
-
-    store.getState().setConfig(config)
-    expect(store.getState().config?.maxTokens).toBe(1)
-
-    store.getState().setConfig({ maxTokens: 32_768 })
-    expect(store.getState().config?.maxTokens).toBe(32_768)
-  })
-
   it('10. setModel', () => {
     const initialConfig: PromptAnalyzerConfig = {
       provider: 'openrouter',
-      model: 'anthropic/old-model',
-      maxTokens: 100,
-      temperature: 0.5
+      model: 'anthropic/old-model'
     }
     store.getState().setConfig(initialConfig)
 
@@ -280,9 +233,7 @@ describe('PromptAnalyzerSlice', () => {
 
     const config: PromptAnalyzerConfig = {
       provider: 'openrouter',
-      model: 'openai/gpt-4',
-      maxTokens: 100,
-      temperature: 0.5
+      model: 'openai/gpt-4'
     }
     store.getState().setConfig(config)
 
@@ -297,9 +248,7 @@ describe('PromptAnalyzerSlice', () => {
     store.setState({ state: 'processing', requestId: 7 })
     store.getState().setConfig({
       provider: 'openrouter',
-      model: 'openai/y',
-      maxTokens: 1,
-      temperature: 1
+      model: 'openai/y'
     })
 
     store.getState().reset()
@@ -404,46 +353,6 @@ describe('PromptAnalyzerSlice', () => {
       error: 'Prompt analyzer model is not configured. Set a model in Settings.',
       requestId: 1
     })
-  })
-
-  it.each([
-    [
-      'negative max tokens',
-      { maxTokens: -1 },
-      'Prompt analyzer max tokens must be between 1 and 32768'
-    ],
-    [
-      'fractional max tokens',
-      { maxTokens: 1.5 },
-      'Prompt analyzer max tokens must be between 1 and 32768'
-    ],
-    [
-      'excessive max tokens',
-      { maxTokens: 32_769 },
-      'Prompt analyzer max tokens must be between 1 and 32768'
-    ],
-    [
-      'negative temperature',
-      { temperature: -0.1 },
-      'Prompt analyzer temperature must be between 0 and 2'
-    ],
-    [
-      'non-finite temperature',
-      { temperature: Number.NaN },
-      'Prompt analyzer temperature must be between 0 and 2'
-    ],
-    [
-      'excessive temperature',
-      { temperature: 2.1 },
-      'Prompt analyzer temperature must be between 0 and 2'
-    ]
-  ])('rejects %s before invoking main', async (_case, options, message) => {
-    await expect(
-      store.getState().analyzePrompt('Original', { model: 'test-model', ...options })
-    ).rejects.toThrow(message)
-
-    expect(window.api.promptAnalyzer.analyze).not.toHaveBeenCalled()
-    expect(store.getState()).toMatchObject({ state: 'error', error: message })
   })
 
   it('invalidates an active request before reporting newer invalid configuration', async () => {

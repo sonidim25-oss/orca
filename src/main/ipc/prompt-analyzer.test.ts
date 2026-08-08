@@ -160,9 +160,7 @@ describe('registerPromptAnalyzerHandlers', () => {
     const args = {
       prompt: 'Improve this',
       provider: 'openrouter',
-      model: 'test-model',
-      maxTokens: 2048,
-      temperature: 0.3
+      model: 'test-model'
     }
 
     const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
@@ -199,9 +197,7 @@ describe('registerPromptAnalyzerHandlers', () => {
     const args = {
       prompt: 'Improve this',
       provider,
-      model: 'test-model',
-      maxTokens: 2048,
-      temperature: 0.3
+      model: 'test-model'
     }
     const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
       event: unknown,
@@ -234,9 +230,7 @@ describe('registerPromptAnalyzerHandlers', () => {
       analyzeHandler(event, {
         provider: invalidProvider,
         prompt: 'test',
-        model: 'm',
-        maxTokens: 1,
-        temperature: 0
+        model: 'm'
       })
     ).resolves.toEqual({
       ok: false,
@@ -265,10 +259,7 @@ describe('registerPromptAnalyzerHandlers', () => {
     ) => Promise<unknown>
 
     await expect(
-      analyzeHandler(
-        { sender: { id: 99 } },
-        { provider: 'openrouter', prompt: 'test', model: 'm', maxTokens: 1, temperature: 0 }
-      )
+      analyzeHandler({ sender: { id: 99 } }, { provider: 'openrouter', prompt: 'test', model: 'm' })
     ).resolves.toEqual({
       ok: false,
       error: 'Rejected [REDACTED]'
@@ -299,9 +290,7 @@ describe('registerPromptAnalyzerHandlers', () => {
     const analysis = analyzeHandler(event, {
       provider: 'openrouter',
       prompt: 'test',
-      model: 'm',
-      maxTokens: 1,
-      temperature: 0
+      model: 'm'
     })
     handlers.get('promptAnalyzer:cancel')?.(event)
 

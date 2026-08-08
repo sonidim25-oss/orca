@@ -5,9 +5,7 @@ import { analyzeWithOpenAI } from './openai-client'
 const args: PromptAnalyzerAnalyzeArgs = {
   prompt: 'Improve this',
   provider: 'openai',
-  model: 'gpt-test',
-  maxTokens: 2048,
-  temperature: 0.3
+  model: 'gpt-test'
 }
 
 function successResponse(): Response {
@@ -55,7 +53,13 @@ describe('analyzeWithOpenAI', () => {
 
       const [, init] = fetchMock.mock.calls[0]
       expect(new Headers(init.headers).get('OpenAI-Organization')).toBe(expectedHeader)
-      expect(JSON.parse(String(init.body))).not.toHaveProperty('organizationId')
+      const body = JSON.parse(String(init.body))
+      expect(body).toMatchObject({
+        model: 'gpt-test',
+        messages: [{ role: 'system' }, { role: 'user', content: 'Improve this' }]
+      })
+      expect(body).not.toHaveProperty('max_tokens')
+      expect(body).not.toHaveProperty('temperature')
     }
   )
 })

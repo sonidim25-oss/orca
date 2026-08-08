@@ -6,8 +6,6 @@ const args: PromptAnalyzerAnalyzeArgs = {
   prompt: 'Improve this',
   provider: 'anthropic',
   model: ' claude-test ',
-  maxTokens: 2048,
-  temperature: 0.3,
   systemPrompt: 'Improve the prompt only.'
 }
 
@@ -23,7 +21,7 @@ describe('analyzeWithAnthropic', () => {
     vi.unstubAllGlobals()
   })
 
-  it('omits temperature from the Anthropic Messages API request', async () => {
+  it('uses a fixed required output limit without sampling options', async () => {
     const signal = new AbortController().signal
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
