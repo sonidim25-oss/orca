@@ -303,7 +303,7 @@ export function PromptAnalyzerPanel({
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="scrollbar-sleek flex-1 overflow-y-auto p-4">
           {/* Title */}
           <h1 className="text-lg font-semibold text-prompt-analyzer-foreground">
             {translate('promptAnalyzer.panel.title', 'Prompt Analyzer')}
@@ -326,7 +326,7 @@ export function PromptAnalyzerPanel({
               disabled={isProcessing}
               maxLength={PROMPT_ANALYZER_PROMPT_MAX_CHARS}
               className={cn(
-                'min-h-[312px] max-h-[624px] resize-y',
+                'scrollbar-sleek min-h-[312px] max-h-[624px] resize-y',
                 'bg-prompt-analyzer-bg border-prompt-analyzer-border',
                 'focus:border-prompt-analyzer-accent focus:ring-prompt-analyzer-accent/20',
                 isProcessing && 'opacity-60 cursor-wait'

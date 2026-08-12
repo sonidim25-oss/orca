@@ -31,7 +31,7 @@ export function PromptAnalyzerResult({
         value={prompt}
         readOnly
         className={cn(
-          'min-h-[200px] max-h-[400px] resize-y',
+          'scrollbar-sleek min-h-[200px] max-h-[400px] resize-y',
           'bg-prompt-analyzer-bg border-prompt-analyzer-border',
           'focus:border-prompt-analyzer-accent focus:ring-prompt-analyzer-accent/20',
           'text-prompt-analyzer-foreground'
