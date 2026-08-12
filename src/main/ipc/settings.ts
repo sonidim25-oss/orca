@@ -42,6 +42,10 @@ function sanitizeRendererSettingsUpdate(args: Partial<GlobalSettings>): Partial<
   } = args as LegacyTerminalScrollbackSettingsUpdate
   void _legacyScrollbackBytes
   void _promptAnalyzerApiKey
+  // Plugin consent and enablement are main-owned authority state. Renderer
+  // writes must pass the dedicated reviewed-fingerprint handlers.
+  delete sanitizedArgs.pluginConsents
+  delete sanitizedArgs.disabledPlugins
   return sanitizedArgs
 }
 
