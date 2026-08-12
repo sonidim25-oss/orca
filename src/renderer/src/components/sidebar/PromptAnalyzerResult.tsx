@@ -31,12 +31,12 @@ export function PromptAnalyzerResult({
         value={prompt}
         readOnly
         className={cn(
-          'scrollbar-sleek min-h-[200px] max-h-[400px] resize-y',
+          'scrollbar-sleek min-h-[312px] max-h-[624px] resize-y',
           'bg-prompt-analyzer-bg border-prompt-analyzer-border',
           'focus:border-prompt-analyzer-accent focus:ring-prompt-analyzer-accent/20',
           'text-prompt-analyzer-foreground'
         )}
-        rows={8}
+        rows={16}
       />
 
       {isTruncated && (
