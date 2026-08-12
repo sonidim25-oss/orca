@@ -49,7 +49,8 @@ vi.mock('@/store', () => ({
 }))
 
 vi.mock('@/prompt-analyzer', () => ({
-  usePromptAnalyzer: () => ({ analyze: mocks.analyze })
+  usePromptAnalyzer: () => ({ analyze: mocks.analyze }),
+  DEFAULT_PROVIDER: 'openrouter'
 }))
 
 vi.mock('@/components/confirmation-dialog', () => ({

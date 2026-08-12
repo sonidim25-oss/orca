@@ -7,8 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { toast } from 'sonner'
-import { usePromptAnalyzer } from '@/prompt-analyzer'
-import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
+import { usePromptAnalyzer, DEFAULT_PROVIDER } from '@/prompt-analyzer'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../../../shared/prompt-analyzer-types'
@@ -16,6 +15,11 @@ import { PromptAnalyzerResult } from './PromptAnalyzerResult'
 
 const PANEL_WIDTH = 420
 const IMPROVED_PROMPT_DISPLAY_LIMIT = 8000
+const HINT_ITEMS: readonly [string, string][] = [
+  ['promptAnalyzer.panel.hint1', 'Paste your draft prompt for any coding agent'],
+  ['promptAnalyzer.panel.hint2', 'Click Improve to clarify and structure it'],
+  ['promptAnalyzer.panel.hint3', 'Copy the result and paste into any terminal']
+]
 const PROVIDER_WARNING =
   'Prompts are sent to a third-party AI provider. Avoid pasting sensitive data (API keys, tokens, passwords).'
 
@@ -46,7 +50,6 @@ export function PromptAnalyzerPanel({
   const [activeApiKeyConfigured, setActiveApiKeyConfigured] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
   const activeProvider = settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
   const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
   const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
@@ -207,10 +210,6 @@ export function PromptAnalyzerPanel({
     [updatePrompt]
   )
 
-  const handleClose = useCallback(() => {
-    onClose()
-  }, [onClose])
-
   if (!isOpen) {
     return null
   }
@@ -221,7 +220,6 @@ export function PromptAnalyzerPanel({
 
   return (
     <div
-      ref={panelRef}
       className={cn(
         'fixed top-0 right-0 z-50 h-dvh flex flex-col bg-prompt-analyzer-bg border-l border-prompt-analyzer-border',
         'transition-transform duration-200 ease-out',
@@ -236,7 +234,7 @@ export function PromptAnalyzerPanel({
       {/* Overlay backdrop */}
       <div
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        onClick={handleClose}
+        onClick={onClose}
         aria-hidden="true"
       />
 
@@ -292,7 +290,7 @@ export function PromptAnalyzerPanel({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={handleClose}
+                  onClick={onClose}
                   className="flex h-8 w-8 items-center justify-center rounded-md text-prompt-analyzer-muted-foreground hover:bg-prompt-analyzer-accent hover:text-prompt-analyzer-accent-foreground transition-colors"
                   aria-label={translate('promptAnalyzer.panel.close', 'Close panel')}
                 >
@@ -350,7 +348,7 @@ export function PromptAnalyzerPanel({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={handleClose} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5">
                     <X className="size-3.5" strokeWidth={2} />
                     <span>{translate('promptAnalyzer.panel.cancel', 'Cancel')}</span>
                   </Button>
@@ -420,27 +418,9 @@ export function PromptAnalyzerPanel({
                     {translate('promptAnalyzer.panel.hintTitle', 'How it works')}
                   </p>
                   <ul className="space-y-1 text-[11px]">
-                    <li>
-                      •{' '}
-                      {translate(
-                        'promptAnalyzer.panel.hint1',
-                        'Paste your draft prompt for any coding agent'
-                      )}
-                    </li>
-                    <li>
-                      •{' '}
-                      {translate(
-                        'promptAnalyzer.panel.hint2',
-                        'Click Improve to clarify and structure it'
-                      )}
-                    </li>
-                    <li>
-                      •{' '}
-                      {translate(
-                        'promptAnalyzer.panel.hint3',
-                        'Copy the result and paste into any terminal'
-                      )}
-                    </li>
+                    {HINT_ITEMS.map(([hintKey, hintText]) => (
+                      <li key={hintKey}>•{translate(hintKey, hintText)}</li>
+                    ))}
                   </ul>
                 </div>
               </div>
@@ -451,5 +431,3 @@ export function PromptAnalyzerPanel({
     </div>
   )
 }
-
-export default PromptAnalyzerPanel
