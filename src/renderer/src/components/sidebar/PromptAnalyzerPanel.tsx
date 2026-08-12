@@ -326,12 +326,12 @@ export function PromptAnalyzerPanel({
               disabled={isProcessing}
               maxLength={PROMPT_ANALYZER_PROMPT_MAX_CHARS}
               className={cn(
-                'min-h-[200px] max-h-[400px] resize-y',
+                'min-h-[312px] max-h-[624px] resize-y',
                 'bg-prompt-analyzer-bg border-prompt-analyzer-border',
                 'focus:border-prompt-analyzer-accent focus:ring-prompt-analyzer-accent/20',
                 isProcessing && 'opacity-60 cursor-wait'
               )}
-              rows={10}
+              rows={16}
             />
 
             {/* Error message */}
