@@ -7,7 +7,7 @@ import type {
   PromptAnalyzerState
 } from '@/prompt-analyzer'
 import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
-import { PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL } from '../../../../shared/prompt-analyzer-types'
+import { resolveActivePromptAnalyzerModel } from '@/prompt-analyzer/resolve-active-model'
 
 const MISSING_API_KEY_ERROR =
   'OpenRouter API key not configured. Please add it in Settings > Prompt Analyzer.'
@@ -89,16 +89,17 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
 
     const { settings } = get()
     const provider = options?.provider ?? settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
-    const rawModel =
-      options?.model ??
-      settings?.promptAnalyzerProviders?.[provider]?.model ??
-      (provider === 'openrouter' ? settings?.promptAnalyzerModel : undefined)
-    const model =
-      typeof rawModel === 'string' && rawModel.trim().length > 0
-        ? rawModel.trim()
-        : provider === 'openrouter'
-          ? PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL
-          : null
+    const model = resolveActivePromptAnalyzerModel({
+      promptAnalyzerProvider: provider,
+      promptAnalyzerModel: settings?.promptAnalyzerModel,
+      promptAnalyzerProviders: {
+        ...settings?.promptAnalyzerProviders,
+        [provider]: {
+          ...settings?.promptAnalyzerProviders?.[provider],
+          model: options?.model ?? settings?.promptAnalyzerProviders?.[provider]?.model
+        }
+      }
+    })
     const rejectInvalidInvocation = async (error: Error): Promise<null> => {
       await window.api.promptAnalyzer.cancel().catch(() => undefined)
       if (get().requestId !== requestId) {

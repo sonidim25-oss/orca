@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { SquarePen, Loader2, Check, AlertCircle, X, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -8,6 +9,7 @@ import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { toast } from 'sonner'
 import { usePromptAnalyzer, DEFAULT_PROVIDER } from '@/prompt-analyzer'
+import { resolveActivePromptAnalyzerModel } from '@/prompt-analyzer/resolve-active-model'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../../../shared/prompt-analyzer-types'
@@ -51,6 +53,7 @@ export function PromptAnalyzerPanel({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const activeProvider = settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
+  const activeModel = resolveActivePromptAnalyzerModel(settings)
   const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
   const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
 
@@ -240,7 +243,6 @@ export function PromptAnalyzerPanel({
 
       {/* Panel content */}
       <div className="relative flex flex-col h-full w-full bg-prompt-analyzer-surface mt-10">
-        {/* Header */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-prompt-analyzer-border px-4">
           <div className="flex items-center gap-2">
             <SquarePen className="size-4 text-prompt-analyzer-muted-foreground" strokeWidth={2} />
@@ -249,8 +251,15 @@ export function PromptAnalyzerPanel({
             </h2>
           </div>
 
-          {/* Status indicator */}
           <div className="flex items-center gap-2">
+            {activeModel && (
+              <Badge
+                variant="outline"
+                className="h-5 max-w-40 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-1.5 py-0 text-[10px] font-normal text-prompt-analyzer-muted-foreground"
+              >
+                {activeModel}
+              </Badge>
+            )}
             {isProcessing && (
               <Tooltip>
                 <TooltipTrigger asChild>
