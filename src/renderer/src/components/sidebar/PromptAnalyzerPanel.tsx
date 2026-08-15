@@ -255,7 +255,7 @@ export function PromptAnalyzerPanel({
             {activeModel && (
               <Badge
                 variant="outline"
-                className="h-9 max-w-40 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-2.5 py-0 text-[25px] font-normal leading-none text-prompt-analyzer-muted-foreground"
+                className="h-7 max-w-40 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-2 py-0 text-[16px] font-normal leading-none text-prompt-analyzer-muted-foreground"
               >
                 {activeModel}
               </Badge>
