@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { SquarePen, Loader2, Check, AlertCircle, X, Sparkles } from 'lucide-react'
+import { SquarePen, Loader2, AlertCircle, X, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -255,7 +255,7 @@ export function PromptAnalyzerPanel({
             {activeModel && (
               <Badge
                 variant="outline"
-                className="h-5 max-w-40 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-1.5 py-0 text-[10px] font-normal text-prompt-analyzer-muted-foreground"
+                className="h-9 max-w-40 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-2.5 py-0 text-[25px] font-normal leading-none text-prompt-analyzer-muted-foreground"
               >
                 {activeModel}
               </Badge>
@@ -269,17 +269,6 @@ export function PromptAnalyzerPanel({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="left">Improving prompt with AI</TooltipContent>
-              </Tooltip>
-            )}
-            {hasResult && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-green-500">
-                    <Check className="size-3" />
-                    <span className="text-[11px]">Improved</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="left">Prompt improved successfully</TooltipContent>
               </Tooltip>
             )}
             {state === 'error' && (
