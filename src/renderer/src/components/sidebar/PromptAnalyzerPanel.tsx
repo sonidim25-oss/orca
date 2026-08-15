@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { SquarePen, Loader2, AlertCircle, X, Sparkles } from 'lucide-react'
+import { Loader2, AlertCircle, X, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -245,7 +245,6 @@ export function PromptAnalyzerPanel({
       <div className="relative flex flex-col h-full w-full bg-prompt-analyzer-surface mt-10">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-prompt-analyzer-border px-4">
           <div className="flex items-center gap-2">
-            <SquarePen className="size-4 text-prompt-analyzer-muted-foreground" strokeWidth={2} />
             <h2 className="text-[13px] font-medium tracking-tight text-prompt-analyzer-foreground">
               {translate('promptAnalyzer.panel.title', 'Prompt Analyzer')}
             </h2>
@@ -259,17 +258,6 @@ export function PromptAnalyzerPanel({
               >
                 {activeModel}
               </Badge>
-            )}
-            {isProcessing && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-prompt-analyzer-muted-foreground">
-                    <Loader2 className="size-3 animate-spin text-prompt-analyzer-accent" />
-                    <span className="text-[11px]">Improving...</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="left">Improving prompt with AI</TooltipContent>
-              </Tooltip>
             )}
             {state === 'error' && (
               <Tooltip>
