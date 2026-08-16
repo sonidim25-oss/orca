@@ -4,6 +4,7 @@ import type {
   PromptAnalyzerAnalyzeResponse,
   SupportedProvider
 } from '../../shared/prompt-analyzer-types'
+import { promptAnalyzerAnalyzeArgsSchema } from '../../shared/prompt-analyzer-types'
 import type { GlobalSettings } from '../../shared/types'
 import type { Store } from '../persistence'
 import {
@@ -16,6 +17,7 @@ import { analyzeWithOpenAI } from '../prompt-analyzer/openai-client'
 import { analyzeWithAnthropic } from '../prompt-analyzer/anthropic-client'
 import { analyzeWithGoogleAI } from '../prompt-analyzer/google-ai-client'
 import { analyzeWithOpenRouter } from '../prompt-analyzer/openrouter-client'
+import { redactSensitiveErrorText } from '../prompt-analyzer/provider-error-sanitize'
 import { assertSupportedPromptAnalyzerProvider } from '../prompt-analyzer/supported-provider'
 import { isTrustedUIRenderer } from './ui'
 
@@ -32,7 +34,15 @@ function migrateLegacyApiKey(store: Store): void {
   if ('promptAnalyzerApiKey' in settings) {
     if (legacyApiKey) {
       if (!hasPromptAnalyzerApiKey('openrouter')) {
-        savePromptAnalyzerApiKey('openrouter', legacyApiKey)
+        try {
+          savePromptAnalyzerApiKey('openrouter', legacyApiKey)
+        } catch (error) {
+          store.updateSettings({
+            promptAnalyzerApiKey: '***',
+            promptAnalyzerApiKeyConfigured: false
+          } as Partial<GlobalSettings>)
+          throw error
+        }
       }
       store.updateSettings({
         promptAnalyzerApiKey: '***',
@@ -126,8 +136,16 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     assertSupportedPromptAnalyzerProvider(provider)
     return { configured: hasPromptAnalyzerApiKey(provider) }
   })
-  ipcMain.handle('promptAnalyzer:analyze', async (event, args: PromptAnalyzerAnalyzeArgs) => {
+  ipcMain.handle('promptAnalyzer:analyze', async (event, args: unknown) => {
     assertTrustedPromptAnalyzerSender(event)
+    const parsedArgs = promptAnalyzerAnalyzeArgsSchema.safeParse(args)
+    if (!parsedArgs.success) {
+      return {
+        ok: false,
+        error: 'Invalid Prompt Analyzer request'
+      } satisfies PromptAnalyzerAnalyzeResponse
+    }
+    const validatedArgs = parsedArgs.data
     activeRequests.get(event.sender.id)?.abort(new Error('Request canceled'))
     const controller = new AbortController()
     activeRequests.set(event.sender.id, controller)
@@ -137,9 +155,8 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
     )
     let apiKey: string | undefined
     try {
-      assertSupportedPromptAnalyzerProvider(args.provider)
-      apiKey = readPromptAnalyzerApiKey(args.provider)
-      const result = await analyzeWithProvider(args, apiKey, controller.signal)
+      apiKey = readPromptAnalyzerApiKey(validatedArgs.provider)
+      const result = await analyzeWithProvider(validatedArgs, apiKey, controller.signal)
       return { ok: true, result } satisfies PromptAnalyzerAnalyzeResponse
     } catch (error) {
       const rawMessage =
@@ -148,7 +165,7 @@ export function registerPromptAnalyzerHandlers(store: Store): void {
           : error instanceof Error
             ? error.message
             : 'Prompt analysis failed with an unknown error'
-      const message = apiKey ? rawMessage.replaceAll(apiKey, '[REDACTED]') : rawMessage
+      const message = redactSensitiveErrorText(rawMessage, apiKey)
       return { ok: false, error: message } satisfies PromptAnalyzerAnalyzeResponse
     } finally {
       clearTimeout(timeoutId)

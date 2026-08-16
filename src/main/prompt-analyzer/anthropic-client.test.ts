@@ -121,7 +121,7 @@ describe('analyzeWithAnthropic', () => {
     ).rejects.toThrow('Anthropic returned an empty response')
   })
 
-  it('redacts the credential from provider errors', async () => {
+  it('maps provider authentication errors to a fixed message', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -133,28 +133,39 @@ describe('analyzeWithAnthropic', () => {
 
     await expect(
       analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]')
+    ).rejects.toThrow('Anthropic authentication failed. Check the configured API key.')
   })
 
-  it('uses raw error metadata and redacts every API key occurrence', async () => {
+  it('does not surface prompt content echoed in raw error metadata', async () => {
+    const echoedPrompt = 'Improve this confidential acquisition plan'
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse(
-            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
-            { status: 401 }
-          )
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              metadata: {
+                raw: `Rejected secret-key while processing: ${echoedPrompt}`
+              }
+            }
+          },
+          { status: 401 }
         )
+      )
     )
 
-    await expect(
-      analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+    const error = (await analyzeWithAnthropic(
+      args,
+      'secret-key',
+      new AbortController().signal
+    ).catch((caught: unknown) => caught as Error)) as Error
+
+    expect(error.message).toBe('Anthropic authentication failed. Check the configured API key.')
+    expect(error.message).not.toContain(echoedPrompt)
+    expect(error.message).not.toContain('secret-key')
   })
 
-  it('extracts nested error details without a top-level message', async () => {
+  it('maps nested error details without surfacing them', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -164,7 +175,7 @@ describe('analyzeWithAnthropic', () => {
 
     await expect(
       analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Invalid [REDACTED]')
+    ).rejects.toThrow('Anthropic request failed.')
   })
 
   it('reports the HTTP status for non-JSON error responses', async () => {
@@ -175,7 +186,7 @@ describe('analyzeWithAnthropic', () => {
 
     await expect(
       analyzeWithAnthropic(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Anthropic API error: 502')
+    ).rejects.toThrow('Anthropic request failed (HTTP 502).')
   })
 
   it('rejects non-JSON success responses', async () => {

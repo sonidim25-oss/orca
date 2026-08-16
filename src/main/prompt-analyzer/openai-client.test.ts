@@ -70,25 +70,71 @@ describe('analyzeWithOpenAI', () => {
     }
   )
 
-  it('uses raw error metadata and redacts every API key occurrence', async () => {
+  it('maps raw error metadata to a safe authentication error', async () => {
+    const echoedPrompt = 'Improve this confidential acquisition plan'
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse(
-            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
-            { status: 401 }
-          )
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              metadata: {
+                raw: `Rejected secret-key while processing: ${echoedPrompt}`
+              }
+            }
+          },
+          { status: 401 }
         )
+      )
     )
 
-    await expect(
-      analyzeWithOpenAI(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+    const error = (await analyzeWithOpenAI(args, 'secret-key', new AbortController().signal).catch(
+      (caught: unknown) => caught as Error
+    )) as Error
+
+    expect(error.message).toBe('OpenAI authentication failed. Check the configured API key.')
+    expect(error.message).not.toContain(echoedPrompt)
+    expect(error.message).not.toContain('secret-key')
   })
 
-  it('extracts nested error details without a top-level message', async () => {
+  it.each([
+    {
+      body: { error: { code: 'rate_limit_exceeded', message: 'Sensitive details' } },
+      status: 429,
+      expected: 'OpenAI rate limit reached. Try again later or choose another model.'
+    },
+    {
+      body: { error: { code: 'model_not_found', message: 'Sensitive details' } },
+      status: 400,
+      expected: 'The selected OpenAI model is unavailable. Choose another model in Settings.'
+    },
+    {
+      body: { error: { code: 'insufficient_quota', message: 'Sensitive details' } },
+      status: 400,
+      expected: 'OpenAI quota exceeded. Check the account plan and billing.'
+    },
+    {
+      body: { error: { code: 'request_timeout', message: 'Sensitive details' } },
+      status: 408,
+      expected: 'OpenAI request timed out. Try again.'
+    },
+    {
+      body: { error: { message: 'Sensitive details' } },
+      status: 500,
+      expected: 'OpenAI request failed (HTTP 500).'
+    }
+  ])(
+    'maps status $status and known error codes to a stable message',
+    async ({ body, status, expected }) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(body, { status })))
+
+      await expect(
+        analyzeWithOpenAI(args, 'secret-key', new AbortController().signal)
+      ).rejects.toThrow(expected)
+    }
+  )
+
+  it('maps nested error details without surfacing them', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -98,6 +144,6 @@ describe('analyzeWithOpenAI', () => {
 
     await expect(
       analyzeWithOpenAI(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Invalid [REDACTED]')
+    ).rejects.toThrow('OpenAI request failed.')
   })
 })

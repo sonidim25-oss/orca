@@ -2,12 +2,14 @@ import type {
   PromptAnalyzerAnalyzeArgs,
   PromptAnalyzerAnalyzeResult
 } from '../../shared/prompt-analyzer-types'
-import {
-  PROMPT_ANALYZER_PROMPT_MAX_CHARS,
-  PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL
-} from '../../shared/prompt-analyzer-types'
+import { promptAnalyzerAnalyzeArgsSchema } from '../../shared/prompt-analyzer-types'
 import { z } from 'zod'
 import { assertPromptAnalyzerClientProvider } from './supported-provider'
+import {
+  isStructuredProviderError,
+  redactSensitiveErrorText,
+  sanitizeProviderError
+} from './provider-error-sanitize'
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const MAX_ATTEMPTS = 3
@@ -15,14 +17,6 @@ const RETRY_BASE_DELAY_MS = 250
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504])
 const DEFAULT_SYSTEM_PROMPT =
   "You are a prompt engineering expert. Your task is to analyze the user's prompt and improve it. Do NOT respond to the prompt content itself. Instead, provide an improved version of the prompt that is clearer, more specific, and better structured. Output only the improved prompt without explanations."
-
-const openRouterErrorResponseSchema = z.object({
-  error: z.object({
-    code: z.number().optional(),
-    message: z.string().trim().min(1),
-    metadata: z.object({ raw: z.string().optional() }).optional()
-  })
-})
 
 const openRouterSuccessResponseSchema = z.object({
   choices: z
@@ -34,28 +28,6 @@ const openRouterSuccessResponseSchema = z.object({
     )
     .min(1)
 })
-
-function redactApiKey(message: string, apiKey: string): string {
-  return apiKey ? message.replaceAll(apiKey, '[REDACTED]') : message
-}
-
-function getOpenRouterErrorMessage(
-  error: z.infer<typeof openRouterErrorResponseSchema>['error']
-): string {
-  return error.metadata?.raw?.trim() || error.message
-}
-
-function appendGuidance(message: string, guidance: string): string {
-  return `${message.replace(/[.!?]?$/, '.')} ${guidance}`
-}
-
-function isInvalidModelError(status: number, message: string): boolean {
-  return (
-    (status === 400 || status === 404) &&
-    /model/i.test(message) &&
-    /(invalid|not (?:a )?valid|not found|unknown|does not exist)/i.test(message)
-  )
-}
 
 function getRetryDelayMs(response: Response | undefined, retryIndex: number): number {
   const retryAfterSeconds = Number(response?.headers.get('Retry-After'))
@@ -120,7 +92,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     return await response.json()
   } catch {
     if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
+      throw new Error(sanitizeProviderError('OpenRouter', response.status).message)
     }
     throw new Error('OpenRouter returned a non-JSON response')
   }
@@ -132,17 +104,7 @@ function hasErrorField(body: unknown): boolean {
 
 function validateArgs(args: PromptAnalyzerAnalyzeArgs): void {
   assertPromptAnalyzerClientProvider(args.provider, 'openrouter', 'OpenRouter')
-  if (!args.prompt?.trim()) {
-    throw new Error('Prompt is required')
-  }
-  if (args.prompt.length > PROMPT_ANALYZER_PROMPT_MAX_CHARS) {
-    throw new Error(
-      `Prompt must not exceed ${PROMPT_ANALYZER_PROMPT_MAX_CHARS.toString()} characters`
-    )
-  }
-  if (!args.model?.trim()) {
-    throw new Error('Prompt analyzer model is not configured. Set a model in Settings.')
-  }
+  promptAnalyzerAnalyzeArgsSchema.parse(args)
 }
 
 export async function analyzeWithOpenRouter(
@@ -168,26 +130,15 @@ export async function analyzeWithOpenRouter(
 
   const body = await parseResponseBody(response)
   if (!response.ok) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
-    let message = errorResponse.success
-      ? getOpenRouterErrorMessage(errorResponse.data.error)
-      : `OpenRouter API error: ${response.status}`
-    if (response.status === 429) {
-      message = appendGuidance(message, 'Switch models or add OpenRouter credits.')
-    } else if (isInvalidModelError(response.status, message)) {
-      message = appendGuidance(
-        message,
-        `Choose a valid model in Settings; try ${PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL}.`
-      )
-    }
-    throw new Error(redactApiKey(message, apiKey))
+    const { message } = sanitizeProviderError('OpenRouter', response.status, body)
+    throw new Error(redactSensitiveErrorText(message, apiKey))
   }
   if (hasErrorField(body)) {
-    const errorResponse = openRouterErrorResponseSchema.safeParse(body)
-    if (!errorResponse.success) {
+    if (!isStructuredProviderError(body)) {
       throw new Error('OpenRouter returned an invalid response')
     }
-    throw new Error(redactApiKey(getOpenRouterErrorMessage(errorResponse.data.error), apiKey))
+    const { message } = sanitizeProviderError('OpenRouter', undefined, body)
+    throw new Error(redactSensitiveErrorText(message, apiKey))
   }
 
   const successResponse = openRouterSuccessResponseSchema.safeParse(body)

@@ -115,7 +115,7 @@ describe('analyzeWithGoogleAI', () => {
     ).rejects.toThrow('Google AI returned an invalid response')
   })
 
-  it('redacts the API key from provider errors', async () => {
+  it('maps provider authentication errors to a fixed message', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -127,28 +127,39 @@ describe('analyzeWithGoogleAI', () => {
 
     await expect(
       analyzeWithGoogleAI(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]')
+    ).rejects.toThrow('Google AI authentication failed. Check the configured API key.')
   })
 
-  it('uses raw error metadata and redacts every API key occurrence', async () => {
+  it('does not surface prompt content echoed in raw error metadata', async () => {
+    const echoedPrompt = 'Improve this confidential acquisition plan'
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse(
-            { error: { metadata: { raw: '  Rejected secret-key; retry secret-key.  ' } } },
-            { status: 401 }
-          )
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              metadata: {
+                raw: `Rejected secret-key while processing: ${echoedPrompt}`
+              }
+            }
+          },
+          { status: 401 }
         )
+      )
     )
 
-    await expect(
-      analyzeWithGoogleAI(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]; retry [REDACTED].')
+    const error = (await analyzeWithGoogleAI(
+      args,
+      'secret-key',
+      new AbortController().signal
+    ).catch((caught: unknown) => caught as Error)) as Error
+
+    expect(error.message).toBe('Google AI authentication failed. Check the configured API key.')
+    expect(error.message).not.toContain(echoedPrompt)
+    expect(error.message).not.toContain('secret-key')
   })
 
-  it('extracts nested error details without a top-level message', async () => {
+  it('maps nested error details without surfacing them', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -158,7 +169,7 @@ describe('analyzeWithGoogleAI', () => {
 
     await expect(
       analyzeWithGoogleAI(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Invalid [REDACTED]')
+    ).rejects.toThrow('Google AI request failed.')
   })
 
   it('rejects another provider before making a request', async () => {

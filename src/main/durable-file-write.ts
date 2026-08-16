@@ -70,8 +70,13 @@ export async function writeFileDurable(
 }
 
 /** Synchronous counterpart for quit and crash paths that cannot await. */
-export function writeFileDurableSync(tmpPath: string, finalPath: string, payload: string): void {
-  writeFileSync(tmpPath, payload, 'utf-8')
+export function writeFileDurableSync(
+  tmpPath: string,
+  finalPath: string,
+  payload: string,
+  mode?: number
+): void {
+  writeFileSync(tmpPath, payload, { encoding: 'utf-8', mode })
   const fd = openSync(tmpPath, 'r+')
   try {
     fsyncSync(fd)

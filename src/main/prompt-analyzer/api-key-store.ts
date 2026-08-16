@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { platform } from 'node:process'
 import type { SupportedProvider } from '../../shared/prompt-analyzer-types'
+import { restrictPromptAnalyzerApiKeyDirectory } from './api-key-directory-permissions'
 import {
   assertSupportedPromptAnalyzerProvider,
   getPromptAnalyzerProviderLabel,
@@ -65,7 +66,9 @@ export function savePromptAnalyzerApiKey(provider: SupportedProvider, apiKey: st
   assertSecureCredentialStorageAvailable()
 
   const apiKeyPath = getApiKeyPath(provider)
-  mkdirSync(join(homedir(), '.orca'), { recursive: true })
+  const apiKeyDirectory = join(homedir(), '.orca')
+  mkdirSync(apiKeyDirectory, { recursive: true })
+  restrictPromptAnalyzerApiKeyDirectory(apiKeyDirectory)
   writeFileSync(apiKeyPath, safeStorage.encryptString(trimmed), { mode: 0o600 })
 }
 

@@ -287,6 +287,21 @@ function decryptOptionalSecret(value: string | null | undefined): string | null 
   return value ? decrypt(value) : null
 }
 
+function decryptSavedPrompts(value: unknown): GlobalSettings['promptAnalyzerSavedPrompts'] {
+  if (Array.isArray(value)) {
+    return value as GlobalSettings['promptAnalyzerSavedPrompts']
+  }
+  if (typeof value !== 'string') {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(decrypt(value)) as unknown
+    return Array.isArray(parsed) ? (parsed as GlobalSettings['promptAnalyzerSavedPrompts']) : []
+  } catch {
+    return []
+  }
+}
+
 function retireLegacyInstructionsForClearedTextActionRecipes(
   sourceControlAi: GlobalSettings['sourceControlAi'],
   previousSettings: GlobalSettings
@@ -478,6 +493,7 @@ export function migrateMobilePairingDataToCanonicalUserDataPath(sourceUserDataDi
 // Why (issue #1158): keep 5 rolling backups at >=1h spacing so a corrupt/empty write leaves an earlier copy recoverable.
 const BACKUP_COUNT = 5
 const BACKUP_MIN_INTERVAL_MS = 60 * 60 * 1000
+const SETTINGS_FILE_MODE = 0o600
 const WORKSPACE_SESSION_PATCH_FULL_NORMALIZATION_KEYS = new Set<keyof WorkspaceSessionState>([
   'tabsByWorktree',
   'terminalLayoutsByTabId'
@@ -2787,14 +2803,19 @@ export class Store {
       const src = backupPath(dataFile, i)
       const dst = backupPath(dataFile, i + 1)
       if (existsSync(src)) {
-        await rename(src, dst).catch((err) => {
-          console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
-        })
+        await rename(src, dst)
+          .then(() => hardenExistingSecureFile(dst))
+          .catch((err) => {
+            console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
+          })
       }
     }
-    await copyFile(dataFile, backupPath(dataFile, 0)).catch((err) => {
-      console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
-    })
+    const newestBackup = backupPath(dataFile, 0)
+    await copyFile(dataFile, newestBackup)
+      .then(() => hardenExistingSecureFile(newestBackup))
+      .catch((err) => {
+        console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
+      })
   }
 
   private rotateBackupsSync(dataFile: string): void {
@@ -2814,13 +2835,16 @@ export class Store {
       if (existsSync(src)) {
         try {
           renameSync(src, dst)
+          hardenExistingSecureFile(dst)
         } catch (err) {
           console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
         }
       }
     }
     try {
-      copyFileSync(dataFile, backupPath(dataFile, 0))
+      const newestBackup = backupPath(dataFile, 0)
+      copyFileSync(dataFile, newestBackup)
+      hardenExistingSecureFile(newestBackup)
     } catch (err) {
       console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
     }
@@ -2836,7 +2860,8 @@ export class Store {
         const raw = readFileSync(path, 'utf-8')
         JSON.parse(raw)
         mkdirSync(dirname(dataFile), { recursive: true })
-        writeFileSync(dataFile, raw, 'utf-8')
+        writeFileSync(dataFile, raw, { encoding: 'utf-8', mode: SETTINGS_FILE_MODE })
+        hardenExistingSecureFile(dataFile)
         console.warn(`[persistence] Recovered state from backup slot ${i}: ${path}`)
         return true
       } catch (err) {
@@ -2873,6 +2898,11 @@ export class Store {
         }
         if (parsed.settings?.httpProxyUrl) {
           parsed.settings.httpProxyUrl = decrypt(parsed.settings.httpProxyUrl)
+        }
+        if (parsed.settings?.promptAnalyzerSavedPrompts !== undefined) {
+          parsed.settings.promptAnalyzerSavedPrompts = decryptSavedPrompts(
+            parsed.settings.promptAnalyzerSavedPrompts
+          )
         }
         if (parsed.ui?.browserKagiSessionLink) {
           parsed.ui.browserKagiSessionLink = decryptOptionalSecret(parsed.ui.browserKagiSessionLink)
@@ -3648,7 +3678,10 @@ export class Store {
       settings: {
         ...this.state.settings,
         opencodeSessionCookie: encryptToSentinel(this.state.settings.opencodeSessionCookie),
-        httpProxyUrl: encryptToSentinel(this.state.settings.httpProxyUrl ?? '')
+        httpProxyUrl: encryptToSentinel(this.state.settings.httpProxyUrl ?? ''),
+        promptAnalyzerSavedPrompts: encryptToSentinel(
+          JSON.stringify(this.state.settings.promptAnalyzerSavedPrompts ?? [])
+        )
       },
       ui: {
         ...this.state.ui,
@@ -3695,7 +3728,8 @@ export class Store {
     let renamed = false
     try {
       // Why: fsync before rename, then fsync the directory; see writeFileDurable.
-      const handle = await open(tmpFile, 'w')
+      // Why: mode is a no-op on Windows; POSIX settings stay owner-only.
+      const handle = await open(tmpFile, 'w', SETTINGS_FILE_MODE)
       try {
         await handle.writeFile(payload, 'utf-8')
         await handle.sync()
@@ -3749,7 +3783,7 @@ export class Store {
     try {
       // Why: fsync the temp file and the directory; a bare rename can survive as stale or empty
       // content after power loss, losing projects/tabs back to the newest usable .bak slot.
-      writeFileDurableSync(tmpFile, dataFile, payload)
+      writeFileDurableSync(tmpFile, dataFile, payload, SETTINGS_FILE_MODE)
       renamed = true
       this.lastWrittenStateHash = stateHash
     } finally {

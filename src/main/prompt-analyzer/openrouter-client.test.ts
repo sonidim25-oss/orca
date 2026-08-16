@@ -214,7 +214,7 @@ describe('analyzeWithOpenRouter', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
-    const rejection = expect(analysis).rejects.toThrow('OpenRouter API error: 503')
+    const rejection = expect(analysis).rejects.toThrow('OpenRouter request failed (HTTP 503).')
     await vi.runAllTimersAsync()
 
     await rejection
@@ -236,7 +236,7 @@ describe('analyzeWithOpenRouter', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps raw rate-limit details and adds guidance after three attempts', async () => {
+  it('maps raw rate-limit details to a fixed message after three attempts', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const fetchMock = vi.fn().mockResolvedValue(
@@ -255,7 +255,7 @@ describe('analyzeWithOpenRouter', () => {
 
     const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
     const rejection = expect(analysis).rejects.toThrow(
-      'test-model is temporarily rate-limited upstream. Switch models or add OpenRouter credits.'
+      'OpenRouter rate limit reached. Try again later or choose another model.'
     )
     await vi.runAllTimersAsync()
 
@@ -277,7 +277,7 @@ describe('analyzeWithOpenRouter', () => {
     await expect(
       analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
     ).rejects.toThrow(
-      'google/gemma-4-31b is not a valid model ID. Choose a valid model in Settings; try openrouter/auto-beta.'
+      'The selected OpenRouter model is unavailable. Choose another model in Settings.'
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -296,12 +296,13 @@ describe('analyzeWithOpenRouter', () => {
     await expect(
       analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
     ).rejects.toThrow(
-      'The requested model was not found. Choose a valid model in Settings; try openrouter/auto-beta.'
+      'The selected OpenRouter model is unavailable. Choose another model in Settings.'
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('prefers trimmed OpenRouter metadata details for rate limit errors', async () => {
+  it('does not surface sensitive OpenRouter metadata details', async () => {
+    const echoedPrompt = 'Improve this confidential acquisition plan'
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -310,7 +311,7 @@ describe('analyzeWithOpenRouter', () => {
             error: {
               code: 429,
               message: 'Rate limit exceeded',
-              metadata: { raw: '  Retry after resetting secret-key usage.  ' }
+              metadata: { raw: `Retry secret-key after processing: ${echoedPrompt}` }
             }
           },
           { status: 429 }
@@ -318,9 +319,17 @@ describe('analyzeWithOpenRouter', () => {
       )
     )
 
-    await expect(
-      analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Retry after resetting [REDACTED] usage.')
+    const error = (await analyzeWithOpenRouter(
+      args,
+      'secret-key',
+      new AbortController().signal
+    ).catch((caught: unknown) => caught as Error)) as Error
+
+    expect(error.message).toBe(
+      'OpenRouter rate limit reached. Try again later or choose another model.'
+    )
+    expect(error.message).not.toContain(echoedPrompt)
+    expect(error.message).not.toContain('secret-key')
   })
 
   it('falls back to the message for message-only OpenRouter errors', async () => {
@@ -333,7 +342,7 @@ describe('analyzeWithOpenRouter', () => {
 
     await expect(
       analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
-    ).rejects.toThrow('Rejected [REDACTED]')
+    ).rejects.toThrow('OpenRouter authentication failed. Check the configured API key.')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -346,7 +355,7 @@ describe('analyzeWithOpenRouter', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const analysis = analyzeWithOpenRouter(args, 'secret-key', new AbortController().signal)
-    const rejection = expect(analysis).rejects.toThrow('OpenRouter API error: 502')
+    const rejection = expect(analysis).rejects.toThrow('OpenRouter request failed (HTTP 502).')
     await vi.runAllTimersAsync()
 
     await rejection

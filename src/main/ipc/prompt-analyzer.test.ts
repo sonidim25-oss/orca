@@ -134,16 +134,22 @@ describe('registerPromptAnalyzerHandlers', () => {
     })
   })
 
-  it('keeps legacy settings unchanged when secure storage fails', () => {
+  it('redacts the legacy API key when secure storage migration fails', () => {
     store.getSettings.mockReturnValue({ promptAnalyzerApiKey: 'legacy-key' })
     hasPromptAnalyzerApiKeyMock.mockReturnValue(false)
     savePromptAnalyzerApiKeyMock.mockImplementation(() => {
       throw new Error('Secure credential storage is unavailable')
     })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    registerPromptAnalyzerHandlers(store as never)
+    expect(() => registerPromptAnalyzerHandlers(store as never)).not.toThrow()
 
-    expect(store.updateSettings).not.toHaveBeenCalled()
+    expect(store.updateSettings).toHaveBeenCalledWith({
+      promptAnalyzerApiKey: '***',
+      promptAnalyzerApiKeyConfigured: false
+    })
+    expect(warn).toHaveBeenCalledWith('[prompt-analyzer] failed to migrate legacy API key')
+    warn.mockRestore()
   })
 
   it('analyzes in main without returning the credential', async () => {
@@ -212,45 +218,70 @@ describe('registerPromptAnalyzerHandlers', () => {
     expect(analyzeMock).toHaveBeenCalledWith(args, 'secret-key', expect.any(AbortSignal))
   })
 
-  it('rejects invalid providers before credential access', async () => {
+  it.each([
+    ['an invalid provider', { provider: '../outside', prompt: 'test', model: 'm' }],
+    ['an empty prompt', { provider: 'openrouter', prompt: '   ', model: 'm' }],
+    ['an oversized prompt', { provider: 'openrouter', prompt: 'a'.repeat(4001), model: 'm' }],
+    ['a missing model', { provider: 'openrouter', prompt: 'test' }],
+    ['an oversized model', { provider: 'openrouter', prompt: 'test', model: 'm'.repeat(201) }],
+    [
+      'an oversized system prompt',
+      { provider: 'openrouter', prompt: 'test', model: 'm', systemPrompt: 's'.repeat(8001) }
+    ],
+    [
+      'an organization ID with unsafe characters',
+      { provider: 'openai', prompt: 'test', model: 'm', organizationId: 'org\r\ninjected' }
+    ],
+    ['a non-object payload', null]
+  ])('rejects %s before credential access or provider dispatch', async (_name, invalidArgs) => {
     store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
     registerPromptAnalyzerHandlers(store as never)
     const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
     const event = { sender: { id: 99 } }
-    const invalidProvider = '../outside'
     const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
       event: unknown,
       args: unknown
     ) => Promise<unknown>
 
+    await expect(analyzeHandler(event, invalidArgs)).resolves.toEqual({
+      ok: false,
+      error: 'Invalid Prompt Analyzer request'
+    })
+    expect(readPromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
+    expect(analyzeWithOpenRouterMock).not.toHaveBeenCalled()
+    expect(analyzeWithOpenAIMock).not.toHaveBeenCalled()
+    expect(analyzeWithAnthropicMock).not.toHaveBeenCalled()
+    expect(analyzeWithGoogleAIMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid providers for API key operations', () => {
+    store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
+    registerPromptAnalyzerHandlers(store as never)
+    const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
+    const event = { sender: { id: 99 } }
+    const invalidProvider = '../outside'
+
     expect(() => handlers.get('promptAnalyzer:getApiKeyStatus')?.(event, invalidProvider)).toThrow(
       'Unsupported Prompt Analyzer provider: ../outside'
     )
-    await expect(
-      analyzeHandler(event, {
-        provider: invalidProvider,
-        prompt: 'test',
-        model: 'm'
-      })
-    ).resolves.toEqual({
-      ok: false,
-      error: 'Unsupported Prompt Analyzer provider: ../outside'
-    })
     expect(() =>
       handlers.get('promptAnalyzer:saveApiKey')?.(event, invalidProvider, 'secret-key')
     ).toThrow('Unsupported Prompt Analyzer provider: ../outside')
     expect(() => handlers.get('promptAnalyzer:clearApiKey')?.(event, invalidProvider)).toThrow(
       'Unsupported Prompt Analyzer provider: ../outside'
     )
-    expect(readPromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
     expect(savePromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
     expect(clearPromptAnalyzerApiKeyMock).not.toHaveBeenCalled()
   })
 
-  it('redacts the credential from errors returned to the renderer', async () => {
+  it('redacts credential-shaped values from errors returned to the renderer', async () => {
     store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
     readPromptAnalyzerApiKeyMock.mockReturnValue('secret-key')
-    analyzeWithOpenRouterMock.mockRejectedValue(new Error('Rejected secret-key'))
+    analyzeWithOpenRouterMock.mockRejectedValue(
+      new Error(
+        'Rejected secret-key, sk-sensitive123, AIzaSensitiveValue123456789012345, Bearer signed-token-abcdefghij'
+      )
+    )
     registerPromptAnalyzerHandlers(store as never)
     const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
     const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
@@ -262,7 +293,27 @@ describe('registerPromptAnalyzerHandlers', () => {
       analyzeHandler({ sender: { id: 99 } }, { provider: 'openrouter', prompt: 'test', model: 'm' })
     ).resolves.toEqual({
       ok: false,
-      error: 'Rejected [REDACTED]'
+      error: 'Rejected [REDACTED], [REDACTED], [REDACTED], [REDACTED]'
+    })
+  })
+
+  it('redacts key-shaped credentials when credential retrieval fails', async () => {
+    store.getSettings.mockReturnValue({ promptAnalyzerApiKey: '  ' })
+    readPromptAnalyzerApiKeyMock.mockImplementation(() => {
+      throw new Error('Credential decode failed for sk-abc123de')
+    })
+    registerPromptAnalyzerHandlers(store as never)
+    const handlers = new Map(handleMock.mock.calls as [string, (...args: unknown[]) => unknown][])
+    const analyzeHandler = handlers.get('promptAnalyzer:analyze') as (
+      event: unknown,
+      args: unknown
+    ) => Promise<unknown>
+
+    await expect(
+      analyzeHandler({ sender: { id: 99 } }, { provider: 'openrouter', prompt: 'test', model: 'm' })
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Credential decode failed for [REDACTED]'
     })
   })
 

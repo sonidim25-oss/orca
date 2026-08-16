@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, type IpcMainEvent } from 'electron'
 import type { Store } from '../persistence'
 import type { GlobalSettings, PersistedState } from '../../shared/types'
 import { listSystemFontFamilies } from '../system-fonts'
@@ -23,11 +23,26 @@ import { prepareLocalWorktreeRootsForRepos } from '../worktree-root-preparation'
 import { scheduleCurrentWorktreeBaseDirectoryWatcherSync } from './worktree-base-directory-watcher'
 import { applyPRBotAuthorOverride } from '../../shared/pr-bot-author-overrides'
 import { resolveEnvironment } from '../../shared/runtime-environment-store'
+import { isDashboardPopoutRenderer } from '../window/dashboard-popout-window'
+import { isTrustedUIRenderer } from './ui'
 
 // Why: the whitelist is the source-of-truth for which keys we emit on. Casting
 // to a Set once at module load lets the IPC handler's per-key membership
 // check stay O(1) without re-coercing the readonly tuple on every call.
 const SETTINGS_CHANGED_WHITELIST_SET = new Set<string>(SETTINGS_CHANGED_WHITELIST)
+
+function isTrustedSettingsReader(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>): boolean {
+  return (
+    isTrustedUIRenderer(event) ||
+    (event.senderFrame === event.sender.mainFrame && isDashboardPopoutRenderer(event.sender))
+  )
+}
+
+function assertTrustedSettingsSender(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>): void {
+  if (!isTrustedSettingsReader(event)) {
+    throw new Error('Unauthorized Settings sender')
+  }
+}
 
 type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
   terminalScrollbackBytes?: unknown
@@ -65,16 +80,19 @@ export function registerSettingsHandlers(
   agentAwakeService?: AgentAwakeService
 ): void {
   store.onSettingsChanged((updates, _settings, originWebContentsId) => {
+    const { promptAnalyzerSavedPrompts: _savedPrompts, ...broadcastUpdates } = updates
+    void _savedPrompts
     for (const window of BrowserWindow.getAllWindows()) {
       const isOrigin =
         originWebContentsId !== undefined && window.webContents.id === originWebContentsId
       if (!window.isDestroyed() && !isOrigin) {
-        window.webContents.send('settings:changed', updates)
+        window.webContents.send('settings:changed', broadcastUpdates)
       }
     }
   })
 
-  ipcMain.handle('settings:get', () => {
+  ipcMain.handle('settings:get', (event) => {
+    assertTrustedSettingsSender(event)
     return store.getSettings()
   })
 
@@ -97,6 +115,11 @@ export function registerSettingsHandlers(
   // synchronously or pre-hydration bindings would always pick main authority
   // (terminal-side-effect-authority.md, migration switch).
   ipcMain.on('settings:get-sync', (event) => {
+    if (!isTrustedSettingsReader(event)) {
+      // Why: sync IPC must always reply; an empty object denies data without surfacing an exception.
+      event.returnValue = {}
+      return
+    }
     event.returnValue = store.getSettings()
   })
 

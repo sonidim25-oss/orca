@@ -5,6 +5,8 @@ const {
   applyElectronProxySettingsMock,
   browserWindowGetAllWindowsMock,
   handleMock,
+  isDashboardPopoutRendererMock,
+  isTrustedUIRendererMock,
   onMock,
   previewGhosttyImportMock,
   previewWarpThemeImportMock,
@@ -16,6 +18,8 @@ const {
   applyElectronProxySettingsMock: vi.fn(),
   browserWindowGetAllWindowsMock: vi.fn(),
   handleMock: vi.fn(),
+  isDashboardPopoutRendererMock: vi.fn(),
+  isTrustedUIRendererMock: vi.fn(),
   onMock: vi.fn(),
   previewGhosttyImportMock: vi.fn(),
   previewWarpThemeImportMock: vi.fn(),
@@ -59,9 +63,29 @@ vi.mock('../../shared/runtime-environment-store', () => ({
   resolveEnvironment: resolveEnvironmentMock
 }))
 
+vi.mock('../window/dashboard-popout-window', () => ({
+  isDashboardPopoutRenderer: isDashboardPopoutRendererMock
+}))
+
+vi.mock('./ui', () => ({
+  isTrustedUIRenderer: isTrustedUIRendererMock
+}))
+
 import { registerSettingsHandlers } from './settings'
 
-const settingsInvokeEvent = { sender: { id: 1 } }
+const trustedMainFrame = {}
+const dashboardPopoutMainFrame = {}
+const untrustedMainFrame = {}
+const trustedSettingsSender = { id: 1, mainFrame: trustedMainFrame }
+const dashboardPopoutSender = { id: 2, mainFrame: dashboardPopoutMainFrame }
+const untrustedSettingsSender = { id: 3, mainFrame: untrustedMainFrame }
+const settingsInvokeEvent = { sender: trustedSettingsSender, senderFrame: trustedMainFrame }
+const dashboardPopoutEvent = {
+  sender: dashboardPopoutSender,
+  senderFrame: dashboardPopoutMainFrame
+}
+const untrustedSettingsEvent = { sender: untrustedSettingsSender, senderFrame: untrustedMainFrame }
+const embeddedPopoutEvent = { sender: dashboardPopoutSender, senderFrame: {} }
 type SettingsChangedListener = (
   updates: unknown,
   settings: unknown,
@@ -94,6 +118,12 @@ describe('registerSettingsHandlers', () => {
     })
     rebuildAppMenuMock.mockClear()
     browserWindowGetAllWindowsMock.mockReset()
+    isDashboardPopoutRendererMock
+      .mockReset()
+      .mockImplementation((sender) => sender === dashboardPopoutSender)
+    isTrustedUIRendererMock
+      .mockReset()
+      .mockImplementation((event) => event.sender === trustedSettingsSender)
     store.getSettings.mockReset()
     store.updateSettings.mockReset()
     store.onSettingsChanged.mockClear()
@@ -105,7 +135,33 @@ describe('registerSettingsHandlers', () => {
     expect(channels).toContain('settings:previewGhosttyImport')
   })
 
-  it('answers the synchronous settings read with the persisted settings', () => {
+  it.each([
+    ['trusted UI renderer', settingsInvokeEvent],
+    ['dashboard popout', dashboardPopoutEvent]
+  ])('answers %s asynchronous settings reads', (_label, event) => {
+    const expected = { theme: 'dark' }
+    store.getSettings.mockReturnValue(expected)
+    registerSettingsHandlers(store as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:get')?.[1]
+    expect(handler(event)).toEqual(expected)
+  })
+
+  it.each([
+    ['arbitrary renderer', untrustedSettingsEvent],
+    ['dashboard popout child frame', embeddedPopoutEvent]
+  ])('rejects %s asynchronous settings reads', (_label, event) => {
+    registerSettingsHandlers(store as never)
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:get')?.[1]
+
+    expect(() => handler(event)).toThrow('Unauthorized Settings sender')
+    expect(store.getSettings).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['trusted UI renderer', settingsInvokeEvent],
+    ['dashboard popout', dashboardPopoutEvent]
+  ])('answers %s synchronous settings reads', (_label, event) => {
     // Why: panes can bind PTYs before async hydration; the side-effect
     // authority kill switch needs the persisted value synchronously.
     store.getSettings.mockReturnValue({ terminalMainSideEffectAuthority: false })
@@ -116,9 +172,25 @@ describe('registerSettingsHandlers', () => {
     )?.[1] as (event: { returnValue: unknown }) => void
     expect(listener).toBeTypeOf('function')
 
-    const event = { returnValue: undefined as unknown }
+    const syncEvent = { ...event, returnValue: undefined as unknown }
+    listener(syncEvent)
+    expect(syncEvent.returnValue).toEqual({ terminalMainSideEffectAuthority: false })
+  })
+
+  it.each([
+    ['arbitrary renderer', untrustedSettingsEvent],
+    ['dashboard popout child frame', embeddedPopoutEvent]
+  ])('returns an empty synchronous response to %s', (_label, readerEvent) => {
+    registerSettingsHandlers(store as never)
+    const listener = onMock.mock.calls.find(
+      (call) => call[0] === 'settings:get-sync'
+    )?.[1] as (event: { sender: unknown; returnValue: unknown }) => void
+    const event = { ...readerEvent, returnValue: undefined as unknown }
+
     listener(event)
-    expect(event.returnValue).toEqual({ terminalMainSideEffectAuthority: false })
+
+    expect(event.returnValue).toEqual({})
+    expect(store.getSettings).not.toHaveBeenCalled()
   })
 
   it('rejects durable Active Server writes through generic settings:set', async () => {
@@ -263,6 +335,39 @@ describe('registerSettingsHandlers', () => {
       throw new Error('settings change listener was not registered')
     }
     listener({ defaultTuiAgent: 'codex' }, { defaultTuiAgent: 'codex' })
+
+    expect(send).toHaveBeenCalledWith('settings:changed', { defaultTuiAgent: 'codex' })
+  })
+
+  it('omits saved prompt content from settings broadcasts', () => {
+    const send = vi.fn()
+    browserWindowGetAllWindowsMock.mockReturnValue([
+      { isDestroyed: () => false, webContents: { id: 2, send } }
+    ])
+    registerSettingsHandlers(store as never)
+
+    const onSettingsChanged = store.onSettingsChanged as unknown as {
+      mock: { calls: [SettingsChangedListener][] }
+    }
+    const listener = onSettingsChanged.mock.calls[0]?.[0]
+    if (!listener) {
+      throw new Error('settings change listener was not registered')
+    }
+    listener(
+      {
+        defaultTuiAgent: 'codex',
+        promptAnalyzerSavedPrompts: [
+          {
+            id: 'saved-1',
+            originalPrompt: 'Private original prompt',
+            improvedPrompt: 'Private improved prompt',
+            savedAt: 12345
+          }
+        ]
+      },
+      {},
+      1
+    )
 
     expect(send).toHaveBeenCalledWith('settings:changed', { defaultTuiAgent: 'codex' })
   })

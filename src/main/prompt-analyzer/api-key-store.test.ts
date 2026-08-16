@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import type * as Os from 'node:os'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const childProcessMock = vi.hoisted(() => ({
+  execFile: vi.fn(),
+  execFileSync: vi.fn()
+}))
 
 const safeStorageMock = vi.hoisted(() => ({
   decryptString: vi.fn((value: Buffer) => value.toString('utf8').replace(/^encrypted:/, '')),
@@ -14,6 +19,7 @@ const safeStorageMock = vi.hoisted(() => ({
 const platformMock = vi.hoisted(() => ({ value: 'win32' }))
 
 let tempHome = ''
+const originalUsername = process.env.USERNAME
 
 async function loadApiKeyStore() {
   vi.resetModules()
@@ -23,18 +29,28 @@ async function loadApiKeyStore() {
     return { ...actual, homedir: () => tempHome }
   })
   vi.doMock('node:process', () => ({ platform: platformMock.value }))
+  vi.doMock('node:child_process', () => childProcessMock)
   return import('./api-key-store')
 }
 
 beforeEach(() => {
   tempHome = mkdtempSync(join(tmpdir(), 'orca-prompt-analyzer-key-store-'))
   vi.clearAllMocks()
+  process.env.USERNAME = 'alice'
   platformMock.value = 'win32'
   safeStorageMock.decryptString.mockImplementation((value: Buffer) =>
     value.toString('utf8').replace(/^encrypted:/, '')
   )
   safeStorageMock.getSelectedStorageBackend.mockReturnValue('gnome_libsecret')
   safeStorageMock.isEncryptionAvailable.mockReturnValue(true)
+})
+
+afterAll(() => {
+  if (originalUsername === undefined) {
+    delete process.env.USERNAME
+  } else {
+    process.env.USERNAME = originalUsername
+  }
 })
 
 describe('Prompt Analyzer API key store', () => {
@@ -69,6 +85,28 @@ describe('Prompt Analyzer API key store', () => {
 
     store.clearPromptAnalyzerApiKey('openrouter')
     expect(store.hasPromptAnalyzerApiKey('openrouter')).toBe(false)
+  })
+
+  it('restricts the API key directory ACL on Windows', async () => {
+    const store = await loadApiKeyStore()
+    const apiKeyDirectory = join(tempHome, '.orca')
+
+    store.savePromptAnalyzerApiKey('openrouter', 'secret-key')
+
+    expect(childProcessMock.execFileSync).toHaveBeenCalledWith(
+      `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\icacls.exe`,
+      [apiKeyDirectory, '/inheritance:r', '/grant:r', 'alice:(OI)(CI)(F)'],
+      { stdio: 'ignore', windowsHide: true, timeout: 10_000 }
+    )
+  })
+
+  it('does not invoke Windows ACL tooling on non-Windows platforms', async () => {
+    platformMock.value = 'linux'
+    const store = await loadApiKeyStore()
+
+    store.savePromptAnalyzerApiKey('openrouter', 'secret-key')
+
+    expect(childProcessMock.execFileSync).not.toHaveBeenCalled()
   })
 
   it('reads changes made by another instance', async () => {
