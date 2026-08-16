@@ -8,8 +8,7 @@ import type {
   SupportedProvider
 } from '@/prompt-analyzer'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
-import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
-import { resolveActivePromptAnalyzerModel } from '@/prompt-analyzer/resolve-active-model'
+import { resolvePromptAnalyzerSelection } from '@/prompt-analyzer/resolve-active-model'
 
 const getInitialState = () => ({
   isPanelOpen: false,
@@ -19,6 +18,7 @@ const getInitialState = () => ({
   improvedPrompt: '',
   lastSuccessfulResult: null,
   savedPrompts: [],
+  activePromptAnalyzerModel: null,
   error: null as string | null,
   requestId: 0
 })
@@ -64,7 +64,8 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       ...(state.state === 'success'
         ? {
             state: 'idle' as PromptAnalyzerState,
-            improvedPrompt: ''
+            improvedPrompt: '',
+            activePromptAnalyzerModel: null
           }
         : {})
     })),
@@ -80,6 +81,7 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       state: 'idle' as PromptAnalyzerState,
       improvedPrompt: '',
       lastSuccessfulResult: null,
+      activePromptAnalyzerModel: null,
       error: null
     }),
 
@@ -115,18 +117,7 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     set({ requestId })
 
     const { settings } = get()
-    const provider = options?.provider ?? settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
-    const model = resolveActivePromptAnalyzerModel({
-      promptAnalyzerProvider: provider,
-      promptAnalyzerModel: settings?.promptAnalyzerModel,
-      promptAnalyzerProviders: {
-        ...settings?.promptAnalyzerProviders,
-        [provider]: {
-          ...settings?.promptAnalyzerProviders?.[provider],
-          model: options?.model ?? settings?.promptAnalyzerProviders?.[provider]?.model
-        }
-      }
-    })
+    const { provider, model } = resolvePromptAnalyzerSelection(settings, options)
     const rejectInvalidInvocation = async (error: Error): Promise<null> => {
       await window.api.promptAnalyzer.cancel().catch(() => undefined)
       if (get().requestId !== requestId) {
@@ -145,6 +136,7 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     set({
       state: 'processing' as PromptAnalyzerState,
       originalPrompt: prompt,
+      activePromptAnalyzerModel: model,
       error: null
     })
 

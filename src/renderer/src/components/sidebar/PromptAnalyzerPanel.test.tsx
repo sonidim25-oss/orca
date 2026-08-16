@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
       improvedPrompt: string
       savedAt: number
     }[],
+    activePromptAnalyzerModel: null as string | null,
     error: null as string | null,
     settings: {
       promptAnalyzerApiKeyConfigured: true,
@@ -96,6 +97,7 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.improvedPrompt = ''
     mocks.state.lastSuccessfulResult = null
     mocks.state.savedPrompts = []
+    mocks.state.activePromptAnalyzerModel = null
     mocks.state.error = null
     mocks.state.settings.promptAnalyzerApiKeyConfigured = true
     mocks.state.settings.promptAnalyzerModel = undefined
@@ -118,6 +120,7 @@ describe('PromptAnalyzerPanel', () => {
   })
 
   it('does not turn an intentionally invalidated request into an empty-response error', async () => {
+    mocks.state.settings.promptAnalyzerModel = 'openai/gpt-4o-mini'
     render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Improve' }))
@@ -130,6 +133,46 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.settings.promptAnalyzerProvider = 'anthropic'
     mocks.state.settings.promptAnalyzerProviders = {
       anthropic: { model: '  claude-sonnet-4  ' }
+    }
+
+    const { container } = render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    const badge = container.querySelector('[data-slot="badge"]')
+    expect(badge?.textContent).toBe('claude-sonnet-4')
+  })
+
+  it('shows the model resolved for the active analysis over the configured model', () => {
+    mocks.state.activePromptAnalyzerModel = 'override-model'
+    mocks.state.settings.promptAnalyzerProviders = {
+      openrouter: { model: 'configured-model' }
+    }
+
+    const { container } = render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    const badge = container.querySelector('[data-slot="badge"]')
+    expect(badge?.textContent).toBe('override-model')
+  })
+
+  it('keeps processing feedback out of the header while retaining the model badge', () => {
+    mocks.state.state = 'processing'
+    mocks.state.settings.promptAnalyzerProvider = 'anthropic'
+    mocks.state.settings.promptAnalyzerProviders = {
+      anthropic: { model: 'claude-sonnet-4' }
+    }
+
+    const { container } = render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    const header = container.querySelector('header')
+    expect(header?.querySelector('.animate-spin')).toBeNull()
+    expect(header?.textContent).not.toContain('Improving...')
+    expect(header?.querySelector('[data-slot="badge"]')?.textContent).toBe('claude-sonnet-4')
+  })
+
+  it('shows the legacy OpenRouter model in the header badge', () => {
+    mocks.state.settings.promptAnalyzerProvider = 'openrouter'
+    mocks.state.settings.promptAnalyzerModel = 'claude-sonnet-4'
+    mocks.state.settings.promptAnalyzerProviders = {
+      openrouter: { model: undefined }
     }
 
     const { container } = render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
@@ -161,6 +204,21 @@ describe('PromptAnalyzerPanel', () => {
     expect(container.querySelector('[data-slot="badge"]')).toBeNull()
   })
 
+  it('disables Improve until the active model is configured', () => {
+    mocks.state.settings.promptAnalyzerProvider = 'anthropic'
+    const { rerender } = render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+    const improveButton = screen.getByRole('button', { name: 'Improve' }) as HTMLButtonElement
+
+    expect(improveButton.disabled).toBe(true)
+
+    mocks.state.settings.promptAnalyzerProviders = {
+      anthropic: { model: 'claude-sonnet-4' }
+    }
+    rerender(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
+
+    expect(improveButton.disabled).toBe(false)
+  })
+
   it('disables Improve when the active provider has no API key', async () => {
     mocks.state.settings.promptAnalyzerApiKeyConfigured = true
     mocks.state.settings.promptAnalyzerProvider = 'openai'
@@ -185,6 +243,7 @@ describe('PromptAnalyzerPanel', () => {
   it('enables Improve when the active provider has an API key', async () => {
     mocks.state.settings.promptAnalyzerApiKeyConfigured = false
     mocks.state.settings.promptAnalyzerProvider = 'openai'
+    mocks.state.settings.promptAnalyzerProviders = { openai: { model: 'gpt-5' } }
     mocks.getApiKeyStatus.mockResolvedValue({ configured: true })
     Object.defineProperty(window, 'api', {
       configurable: true,

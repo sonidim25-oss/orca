@@ -36,6 +36,7 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.improvedPrompt).toBe('')
     expect(state.lastSuccessfulResult).toBeNull()
     expect(state.savedPrompts).toEqual([])
+    expect(state.activePromptAnalyzerModel).toBeNull()
     expect(state.error).toBeNull()
   })
 
@@ -136,6 +137,7 @@ describe('PromptAnalyzerSlice', () => {
       state: 'success',
       originalPrompt: 'orig',
       improvedPrompt: 'improved',
+      activePromptAnalyzerModel: 'result-model',
       error: null
     })
 
@@ -143,10 +145,15 @@ describe('PromptAnalyzerSlice', () => {
     expect(store.getState()).toMatchObject({
       state: 'idle',
       originalPrompt: 'edited',
-      improvedPrompt: ''
+      improvedPrompt: '',
+      activePromptAnalyzerModel: null
     })
 
-    store.setState({ state: 'success', improvedPrompt: 'improved' })
+    store.setState({
+      state: 'success',
+      improvedPrompt: 'improved',
+      activePromptAnalyzerModel: 'result-model'
+    })
     store.setState({
       lastSuccessfulResult: { originalPrompt: 'edited', improvedPrompt: 'improved' }
     })
@@ -156,6 +163,7 @@ describe('PromptAnalyzerSlice', () => {
       originalPrompt: 'edited',
       improvedPrompt: '',
       lastSuccessfulResult: null,
+      activePromptAnalyzerModel: null,
       error: null
     })
   })
@@ -267,6 +275,26 @@ describe('PromptAnalyzerSlice', () => {
     expect(window.api.promptAnalyzer.analyze).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4' })
     )
+    expect(store.getState().activePromptAnalyzerModel).toBe('claude-sonnet-4')
+  })
+
+  it('records an explicit model override as the active analysis model', async () => {
+    vi.mocked(window.api.promptAnalyzer.analyze).mockResolvedValue({
+      ok: true,
+      result: { suggestion: 'Better', improvedPrompt: 'Better', reasoning: '' }
+    })
+    store.setState({
+      settings: {
+        promptAnalyzerProviders: { openrouter: { model: 'configured-model' } }
+      } as AppState['settings']
+    })
+
+    await store.getState().analyzePrompt('Original', { model: 'override-model' })
+
+    expect(window.api.promptAnalyzer.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openrouter', model: 'override-model' })
+    )
+    expect(store.getState().activePromptAnalyzerModel).toBe('override-model')
   })
 
   it('ignores stale slice config when resolving provider and model', async () => {

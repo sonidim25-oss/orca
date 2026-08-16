@@ -33,6 +33,7 @@ export type PromptAnalyzerSlice = {
   improvedPrompt: string
   lastSuccessfulResult: PromptAnalyzerResultSnapshot | null
   savedPrompts: SavedPrompt[]
+  activePromptAnalyzerModel: string | null
   error: string | null
   requestId: number
 

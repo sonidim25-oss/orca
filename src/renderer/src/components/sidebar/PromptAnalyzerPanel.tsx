@@ -41,6 +41,7 @@ export function PromptAnalyzerPanel({
   const improvedPrompt = useAppStore((s) => s.improvedPrompt)
   const lastSuccessfulResult = useAppStore((s) => s.lastSuccessfulResult)
   const savedPrompts = useAppStore((s) => s.savedPrompts)
+  const activePromptAnalyzerModel = useAppStore((s) => s.activePromptAnalyzerModel)
   const error = useAppStore((s) => s.error)
   const settings = useAppStore((s) => s.settings)
   const updatePrompt = useAppStore((s) => s.updatePrompt)
@@ -56,7 +57,7 @@ export function PromptAnalyzerPanel({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const activeProvider = settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
-  const activeModel = resolveActivePromptAnalyzerModel(settings)
+  const activeModel = activePromptAnalyzerModel ?? resolveActivePromptAnalyzerModel(settings)
   const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
   const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
 
@@ -345,6 +346,7 @@ export function PromptAnalyzerPanel({
                       isProcessing ||
                       isWarningOpen ||
                       !originalPrompt.trim() ||
+                      !activeModel ||
                       !activeApiKeyConfigured
                     }
                     className={cn(
