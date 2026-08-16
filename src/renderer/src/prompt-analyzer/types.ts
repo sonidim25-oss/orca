@@ -14,6 +14,11 @@ export type PromptAnalyzerResultSnapshot = {
   improvedPrompt: string
 }
 
+export type SavedPrompt = PromptAnalyzerResultSnapshot & {
+  id: string
+  savedAt: number
+}
+
 export type AnalyzeOptions = {
   provider?: SupportedProvider
   model?: string
@@ -27,14 +32,16 @@ export type PromptAnalyzerSlice = {
   originalPrompt: string
   improvedPrompt: string
   lastSuccessfulResult: PromptAnalyzerResultSnapshot | null
+  savedPrompts: SavedPrompt[]
   error: string | null
   requestId: number
 
   setPanelOpen: (open: boolean) => void
   setHasWarned: (hasWarned: boolean) => void
   updatePrompt: (prompt: string) => void
-  reportMissingApiKey: () => void
+  reportMissingApiKey: (provider: SupportedProvider) => void
   dismissResult: () => void
+  savePromptLocally: () => void
   analyzePrompt: (prompt: string, options?: AnalyzeOptions) => Promise<AnalyzeResult | null>
   togglePanel: () => void
   reset: () => void

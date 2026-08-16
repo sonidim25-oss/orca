@@ -35,6 +35,7 @@ describe('PromptAnalyzerSlice', () => {
     expect(state.originalPrompt).toBe('')
     expect(state.improvedPrompt).toBe('')
     expect(state.lastSuccessfulResult).toBeNull()
+    expect(state.savedPrompts).toEqual([])
     expect(state.error).toBeNull()
   })
 
@@ -162,6 +163,51 @@ describe('PromptAnalyzerSlice', () => {
   it('setHasWarned tracks the session warning', () => {
     store.getState().setHasWarned(true)
     expect(store.getState().hasWarned).toBe(true)
+  })
+
+  it('reports a missing API key for the selected provider', () => {
+    store.getState().reportMissingApiKey('openai')
+
+    expect(store.getState()).toMatchObject({
+      state: 'error',
+      error: 'Missing OpenAI API key. Please add it in Settings > Prompt Analyzer.'
+    })
+  })
+
+  it('saves the current improved prompt for the session', () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-1') })
+    vi.spyOn(Date, 'now').mockReturnValue(1234)
+    store.setState({ originalPrompt: 'Original', improvedPrompt: 'Improved' })
+
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toEqual([
+      {
+        id: 'saved-1',
+        originalPrompt: 'Original',
+        improvedPrompt: 'Improved',
+        savedAt: 1234
+      }
+    ])
+  })
+
+  it('falls back to the retained result and ignores an empty save', () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-2') })
+    store.getState().savePromptLocally()
+    expect(store.getState().savedPrompts).toEqual([])
+
+    store.setState({
+      lastSuccessfulResult: { originalPrompt: 'Retained original', improvedPrompt: 'Retained' }
+    })
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toEqual([
+      expect.objectContaining({
+        id: 'saved-2',
+        originalPrompt: 'Retained original',
+        improvedPrompt: 'Retained'
+      })
+    ])
   })
 
   it('reset returns to initial state', () => {

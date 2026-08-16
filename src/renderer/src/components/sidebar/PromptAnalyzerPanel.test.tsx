@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   analyze: vi.fn(),
   confirm: vi.fn(),
   errorToast: vi.fn(),
-  saveDownloadedFile: vi.fn(),
   successToast: vi.fn(),
   getApiKeyStatus: vi.fn(),
   writeClipboardText: vi.fn(),
@@ -22,6 +21,12 @@ const mocks = vi.hoisted(() => ({
       originalPrompt: string
       improvedPrompt: string
     } | null,
+    savedPrompts: [] as {
+      id: string
+      originalPrompt: string
+      improvedPrompt: string
+      savedAt: number
+    }[],
     error: null as string | null,
     settings: {
       promptAnalyzerApiKeyConfigured: true,
@@ -39,7 +44,8 @@ const mocks = vi.hoisted(() => ({
     updatePrompt: vi.fn(),
     setHasWarned: vi.fn(),
     reportMissingApiKey: vi.fn(),
-    dismissResult: vi.fn()
+    dismissResult: vi.fn(),
+    savePromptLocally: vi.fn()
   }
 }))
 
@@ -89,6 +95,7 @@ describe('PromptAnalyzerPanel', () => {
     mocks.state.originalPrompt = 'Improve this prompt'
     mocks.state.improvedPrompt = ''
     mocks.state.lastSuccessfulResult = null
+    mocks.state.savedPrompts = []
     mocks.state.error = null
     mocks.state.settings.promptAnalyzerApiKeyConfigured = true
     mocks.state.settings.promptAnalyzerModel = undefined
@@ -98,9 +105,6 @@ describe('PromptAnalyzerPanel', () => {
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: {
-        fs: {
-          saveDownloadedFile: mocks.saveDownloadedFile
-        },
         ui: {
           writeClipboardText: mocks.writeClipboardText
         }
@@ -246,61 +250,44 @@ describe('PromptAnalyzerPanel', () => {
     expect(screen.queryByRole('button', { name: '' })).toBeNull()
   })
 
-  it('saves the complete retained result and shows its destination', async () => {
+  it('saves the complete retained result in the session', async () => {
     const fullPrompt = `${'b'.repeat(8000)}complete-save-tail`
     mocks.state.state = 'error'
     mocks.state.lastSuccessfulResult = {
       originalPrompt: 'Previous original',
       improvedPrompt: fullPrompt
     }
-    mocks.saveDownloadedFile.mockResolvedValue({
-      canceled: false,
-      destinationPath: 'C:\\prompts\\improved-prompt.md'
-    })
-
     render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
 
     expect(screen.getByDisplayValue('b'.repeat(8000))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await vi.waitFor(() =>
-      expect(mocks.saveDownloadedFile).toHaveBeenCalledWith({
-        suggestedName: 'improved-prompt.md',
-        content: fullPrompt,
-        encoding: 'utf8'
-      })
-    )
+    expect(mocks.state.savePromptLocally).toHaveBeenCalledOnce()
     expect(mocks.successToast).toHaveBeenCalledWith('Prompt saved', {
-      description: 'Saved to C:\\prompts\\improved-prompt.md'
+      description: 'Saved in Prompt Analyzer for this session'
     })
     expect(mocks.state.updatePrompt).not.toHaveBeenCalled()
     expect(mocks.state.dismissResult).not.toHaveBeenCalled()
   })
 
-  it('leaves the result unchanged when saving is canceled', async () => {
-    renderResult()
-    mocks.saveDownloadedFile.mockResolvedValue({ canceled: true })
+  it('renders saved prompts and expands the selected entry', () => {
+    const savedPrompt = `Saved full prompt ${'details '.repeat(19)}details`
+    mocks.state.savedPrompts = [
+      {
+        id: 'saved-1',
+        originalPrompt: 'Original saved prompt',
+        improvedPrompt: savedPrompt,
+        savedAt: new Date(2026, 0, 2, 12, 30).getTime()
+      }
+    ]
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    render(<PromptAnalyzerPanel isOpen onClose={vi.fn()} />)
 
-    await vi.waitFor(() => expect(mocks.saveDownloadedFile).toHaveBeenCalledOnce())
-    expect(mocks.successToast).not.toHaveBeenCalled()
-    expect(mocks.errorToast).not.toHaveBeenCalled()
-    expect(mocks.state.updatePrompt).not.toHaveBeenCalled()
-    expect(mocks.state.dismissResult).not.toHaveBeenCalled()
-  })
+    expect(screen.getByText('Saved Prompts')).toBeTruthy()
+    expect(screen.queryByText(savedPrompt)).toBeNull()
 
-  it('shows the error message when saving fails', async () => {
-    renderResult()
-    mocks.saveDownloadedFile.mockRejectedValue(new Error('Disk is full'))
+    fireEvent.click(screen.getByRole('button', { name: /Saved full prompt/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    await vi.waitFor(() =>
-      expect(mocks.errorToast).toHaveBeenCalledWith('Save failed', {
-        description: 'Disk is full'
-      })
-    )
-    expect(mocks.successToast).not.toHaveBeenCalled()
+    expect(screen.getByText(savedPrompt)).toBeTruthy()
   })
 })

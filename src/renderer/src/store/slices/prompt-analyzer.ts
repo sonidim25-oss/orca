@@ -4,13 +4,12 @@ import type {
   AnalyzeOptions,
   AnalyzeResult,
   PromptAnalyzerSlice,
-  PromptAnalyzerState
+  PromptAnalyzerState,
+  SupportedProvider
 } from '@/prompt-analyzer'
+import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { DEFAULT_PROVIDER } from '@/prompt-analyzer/constants'
 import { resolveActivePromptAnalyzerModel } from '@/prompt-analyzer/resolve-active-model'
-
-const MISSING_API_KEY_ERROR =
-  'OpenRouter API key not configured. Please add it in Settings > Prompt Analyzer.'
 
 const getInitialState = () => ({
   isPanelOpen: false,
@@ -19,6 +18,7 @@ const getInitialState = () => ({
   originalPrompt: '',
   improvedPrompt: '',
   lastSuccessfulResult: null,
+  savedPrompts: [],
   error: null as string | null,
   requestId: 0
 })
@@ -69,8 +69,11 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
         : {})
     })),
 
-  reportMissingApiKey: () =>
-    set({ state: 'error' as PromptAnalyzerState, error: MISSING_API_KEY_ERROR }),
+  reportMissingApiKey: (provider: SupportedProvider) =>
+    set({
+      state: 'error' as PromptAnalyzerState,
+      error: `Missing ${getProviderLabel(provider)} API key. Please add it in Settings > Prompt Analyzer.`
+    }),
 
   dismissResult: () =>
     set({
@@ -78,6 +81,30 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       improvedPrompt: '',
       lastSuccessfulResult: null,
       error: null
+    }),
+
+  savePromptLocally: () =>
+    set((state) => {
+      const result = state.improvedPrompt
+        ? {
+            originalPrompt: state.originalPrompt,
+            improvedPrompt: state.improvedPrompt
+          }
+        : state.lastSuccessfulResult
+      if (!result) {
+        return state
+      }
+
+      return {
+        savedPrompts: [
+          ...state.savedPrompts,
+          {
+            id: crypto.randomUUID(),
+            ...result,
+            savedAt: Date.now()
+          }
+        ]
+      }
     }),
 
   analyzePrompt: async (

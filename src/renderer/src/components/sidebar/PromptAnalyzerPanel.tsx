@@ -14,6 +14,7 @@ import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../../../shared/prompt-analyzer-types'
 import { PromptAnalyzerResult } from './PromptAnalyzerResult'
+import { SavedPrompts } from './SavedPrompts'
 
 const PANEL_WIDTH = 420
 const IMPROVED_PROMPT_DISPLAY_LIMIT = 8000
@@ -39,12 +40,14 @@ export function PromptAnalyzerPanel({
   const originalPrompt = useAppStore((s) => s.originalPrompt)
   const improvedPrompt = useAppStore((s) => s.improvedPrompt)
   const lastSuccessfulResult = useAppStore((s) => s.lastSuccessfulResult)
+  const savedPrompts = useAppStore((s) => s.savedPrompts)
   const error = useAppStore((s) => s.error)
   const settings = useAppStore((s) => s.settings)
   const updatePrompt = useAppStore((s) => s.updatePrompt)
   const setHasWarned = useAppStore((s) => s.setHasWarned)
   const reportMissingApiKey = useAppStore((s) => s.reportMissingApiKey)
   const dismissResult = useAppStore((s) => s.dismissResult)
+  const savePromptLocally = useAppStore((s) => s.savePromptLocally)
 
   const { analyze } = usePromptAnalyzer()
   const confirm = useConfirmationDialog()
@@ -120,7 +123,7 @@ export function PromptAnalyzerPanel({
     }
 
     if (!activeApiKeyConfigured) {
-      reportMissingApiKey()
+      reportMissingApiKey(activeProvider)
       toast.error(`Missing ${getProviderLabel(activeProvider)} API Key`, {
         description: 'Add your API key in Settings > Prompt Analyzer'
       })
@@ -182,29 +185,19 @@ export function PromptAnalyzerPanel({
     [resultPrompt, originalPrompt]
   )
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (!resultPrompt) {
       return
     }
 
-    try {
-      const result = await window.api.fs.saveDownloadedFile({
-        suggestedName: 'improved-prompt.md',
-        content: resultPrompt,
-        encoding: 'utf8'
-      })
-      if (result.canceled) {
-        return
-      }
-      toast.success('Prompt saved', {
-        description: `Saved to ${result.destinationPath}`
-      })
-    } catch (error) {
-      toast.error('Save failed', {
-        description: error instanceof Error ? error.message : String(error)
-      })
-    }
-  }, [resultPrompt])
+    savePromptLocally()
+    toast.success(translate('promptAnalyzer.panel.savedToast', 'Prompt saved'), {
+      description: translate(
+        'promptAnalyzer.panel.savedToastDescription',
+        'Saved in Prompt Analyzer for this session'
+      )
+    })
+  }, [resultPrompt, savePromptLocally])
 
   const handlePromptChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -386,10 +379,12 @@ export function PromptAnalyzerPanel({
               prompt={displayedImprovedPrompt}
               isTruncated={isImprovedPromptTruncated}
               onCopyAndUse={() => void handleCopy(onClose)}
-              onSave={() => void handleSave()}
+              onSave={handleSave}
               onEdit={dismissResult}
             />
           )}
+
+          <SavedPrompts prompts={savedPrompts} />
 
           {/* Empty state / hint */}
           {!originalPrompt && !hasResult && (
