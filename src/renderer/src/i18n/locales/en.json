@@ -14167,6 +14167,13 @@
       "launchFailed": "Could not start a new {{agent}} session."
     }
   },
+  "promptAnalyzer": {
+    "panel": {
+      "savedPrompts": "Saved Prompts",
+      "savedToast": "Prompt saved",
+      "savedToastDescription": "Saved in Prompt Analyzer — persists across sessions"
+    }
+  },
   "dashboardPopout": {
     "placeholder": {
       "title": "Agent dashboard",

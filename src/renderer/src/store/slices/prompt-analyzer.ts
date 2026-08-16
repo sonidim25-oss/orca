@@ -5,19 +5,20 @@ import type {
   AnalyzeResult,
   PromptAnalyzerSlice,
   PromptAnalyzerState,
+  SavedPrompt,
   SupportedProvider
 } from '@/prompt-analyzer'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
 import { resolvePromptAnalyzerSelection } from '@/prompt-analyzer/resolve-active-model'
 
-const getInitialState = () => ({
+const getInitialState = (settings?: AppState['settings']) => ({
   isPanelOpen: false,
   hasWarned: false,
   state: 'idle' as PromptAnalyzerState,
   originalPrompt: '',
   improvedPrompt: '',
   lastSuccessfulResult: null,
-  savedPrompts: [],
+  savedPrompts: settings?.promptAnalyzerSavedPrompts ?? ([] as SavedPrompt[]),
   activePromptAnalyzerModel: null,
   error: null as string | null,
   requestId: 0
@@ -94,18 +95,18 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
           }
         : state.lastSuccessfulResult
       if (!result) {
-        return state
+        return {}
       }
 
+      const nextPrompt: SavedPrompt = {
+        id: crypto.randomUUID(),
+        ...result,
+        savedAt: Date.now()
+      }
+      const nextPrompts = [...state.savedPrompts, nextPrompt]
+      void get().updateSettings({ promptAnalyzerSavedPrompts: nextPrompts })
       return {
-        savedPrompts: [
-          ...state.savedPrompts,
-          {
-            id: crypto.randomUUID(),
-            ...result,
-            savedAt: Date.now()
-          }
-        ]
+        savedPrompts: nextPrompts
       }
     }),
 
@@ -191,6 +192,8 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
     if (state === 'processing') {
       void window.api.promptAnalyzer.cancel()
     }
-    set({ ...getInitialState(), requestId: requestId + 1 })
-  }
+    set({ ...getInitialState(get().settings), requestId: requestId + 1 })
+  },
+
+  hydrateSavedPrompts: () => set({ savedPrompts: get().settings?.promptAnalyzerSavedPrompts ?? [] })
 })

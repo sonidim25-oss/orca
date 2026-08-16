@@ -46,7 +46,8 @@ const mocks = vi.hoisted(() => ({
     setHasWarned: vi.fn(),
     reportMissingApiKey: vi.fn(),
     dismissResult: vi.fn(),
-    savePromptLocally: vi.fn()
+    savePromptLocally: vi.fn(),
+    hydrateSavedPrompts: vi.fn()
   }
 }))
 
@@ -323,7 +324,7 @@ describe('PromptAnalyzerPanel', () => {
 
     expect(mocks.state.savePromptLocally).toHaveBeenCalledOnce()
     expect(mocks.successToast).toHaveBeenCalledWith('Prompt saved', {
-      description: 'Saved in Prompt Analyzer for this session'
+      description: 'Saved in Prompt Analyzer — persists across sessions'
     })
     expect(mocks.state.updatePrompt).not.toHaveBeenCalled()
     expect(mocks.state.dismissResult).not.toHaveBeenCalled()

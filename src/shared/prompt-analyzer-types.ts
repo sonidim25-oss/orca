@@ -49,3 +49,13 @@ export type PromptAnalyzerAnalyzeResult = {
 export type PromptAnalyzerAnalyzeResponse =
   | { ok: true; result: PromptAnalyzerAnalyzeResult }
   | { ok: false; error: string }
+
+export type PromptAnalyzerResultSnapshot = {
+  originalPrompt: string
+  improvedPrompt: string
+}
+
+export type SavedPrompt = PromptAnalyzerResultSnapshot & {
+  id: string
+  savedAt: number
+}

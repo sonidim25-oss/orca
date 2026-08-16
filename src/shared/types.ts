@@ -28,7 +28,11 @@ import type {
   RepoSourceControlAiOverrides,
   SourceControlAiSettings
 } from './source-control-ai-types'
-import type { PromptAnalyzerProviderSettings, SupportedProvider } from './prompt-analyzer-types'
+import type {
+  PromptAnalyzerProviderSettings,
+  SavedPrompt,
+  SupportedProvider
+} from './prompt-analyzer-types'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import type { AgentKind, LaunchSource, RequestKind } from './telemetry-events'
 import type { SleepingAgentLaunchConfig, SleepingAgentSessionRecord } from './agent-session-resume'
@@ -3016,6 +3020,8 @@ export type GlobalSettings = {
   promptAnalyzerModel?: string
   promptAnalyzerProvider?: SupportedProvider
   promptAnalyzerProviders?: Partial<Record<SupportedProvider, PromptAnalyzerProviderSettings>>
+  /** Durable saved prompts that survive restarts. */
+  promptAnalyzerSavedPrompts?: SavedPrompt[]
 }
 
 export type OrcaWorkspaceLayout = {

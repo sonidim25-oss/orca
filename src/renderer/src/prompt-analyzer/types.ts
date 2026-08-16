@@ -1,23 +1,19 @@
 import type {
   PromptAnalyzerAnalyzeResult,
+  PromptAnalyzerResultSnapshot,
+  SavedPrompt,
   SupportedProvider
 } from '../../../shared/prompt-analyzer-types'
 
 export type AnalyzeResult = PromptAnalyzerAnalyzeResult
 
-export type { SupportedProvider } from '../../../shared/prompt-analyzer-types'
+export type {
+  PromptAnalyzerResultSnapshot,
+  SavedPrompt,
+  SupportedProvider
+} from '../../../shared/prompt-analyzer-types'
 
 export type PromptAnalyzerState = 'idle' | 'processing' | 'success' | 'error'
-
-export type PromptAnalyzerResultSnapshot = {
-  originalPrompt: string
-  improvedPrompt: string
-}
-
-export type SavedPrompt = PromptAnalyzerResultSnapshot & {
-  id: string
-  savedAt: number
-}
 
 export type AnalyzeOptions = {
   provider?: SupportedProvider
@@ -43,6 +39,7 @@ export type PromptAnalyzerSlice = {
   reportMissingApiKey: (provider: SupportedProvider) => void
   dismissResult: () => void
   savePromptLocally: () => void
+  hydrateSavedPrompts: () => void
   analyzePrompt: (prompt: string, options?: AnalyzeOptions) => Promise<AnalyzeResult | null>
   togglePanel: () => void
   reset: () => void

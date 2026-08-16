@@ -49,6 +49,7 @@ export function PromptAnalyzerPanel({
   const reportMissingApiKey = useAppStore((s) => s.reportMissingApiKey)
   const dismissResult = useAppStore((s) => s.dismissResult)
   const savePromptLocally = useAppStore((s) => s.savePromptLocally)
+  const hydrateSavedPrompts = useAppStore((s) => s.hydrateSavedPrompts)
 
   const { analyze } = usePromptAnalyzer()
   const confirm = useConfirmationDialog()
@@ -93,6 +94,13 @@ export function PromptAnalyzerPanel({
       textareaRef.current.focus()
     }
   }, [isOpen])
+
+  // Hydrate saved prompts from persisted settings when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      hydrateSavedPrompts()
+    }
+  }, [isOpen, hydrateSavedPrompts])
 
   // Prevent body scroll when panel is open
   useEffect(() => {
@@ -195,7 +203,7 @@ export function PromptAnalyzerPanel({
     toast.success(translate('promptAnalyzer.panel.savedToast', 'Prompt saved'), {
       description: translate(
         'promptAnalyzer.panel.savedToastDescription',
-        'Saved in Prompt Analyzer for this session'
+        'Saved in Prompt Analyzer — persists across sessions'
       )
     })
   }, [resultPrompt, savePromptLocally])

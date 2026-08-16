@@ -3,12 +3,16 @@ import { create } from 'zustand'
 import { createPromptAnalyzerSlice } from './prompt-analyzer'
 import type { AppState } from '../types'
 
+const mockUpdateSettings = vi.fn().mockResolvedValue(undefined)
+
 function createTestStore() {
   return create<AppState>()(
     (...a) =>
       ({
-        ...createPromptAnalyzerSlice(...a)
-      }) as AppState
+        ...createPromptAnalyzerSlice(...a),
+        updateSettings: mockUpdateSettings,
+        settings: null
+      }) as unknown as AppState
   )
 }
 
@@ -24,6 +28,8 @@ describe('PromptAnalyzerSlice', () => {
         }
       }
     })
+    mockUpdateSettings.mockClear()
+    mockUpdateSettings.mockResolvedValue(undefined)
     store = createTestStore()
   })
 
@@ -216,6 +222,121 @@ describe('PromptAnalyzerSlice', () => {
         improvedPrompt: 'Retained'
       })
     ])
+  })
+
+  it('hydrates saved prompts from persisted settings', () => {
+    store.setState({
+      settings: {
+        promptAnalyzerSavedPrompts: [
+          {
+            id: 'existing-1',
+            originalPrompt: 'Old original',
+            improvedPrompt: 'Old improved',
+            savedAt: 12345
+          }
+        ]
+      } as AppState['settings']
+    })
+
+    store.getState().hydrateSavedPrompts()
+
+    expect(store.getState().savedPrompts).toEqual([
+      {
+        id: 'existing-1',
+        originalPrompt: 'Old original',
+        improvedPrompt: 'Old improved',
+        savedAt: 12345
+      }
+    ])
+  })
+
+  it('persists saved prompts through updateSettings', () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-3') })
+    vi.spyOn(Date, 'now').mockReturnValue(4567)
+    store.setState({ originalPrompt: 'Persist me', improvedPrompt: 'Persisted' })
+
+    store.getState().savePromptLocally()
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      promptAnalyzerSavedPrompts: [
+        {
+          id: 'saved-3',
+          originalPrompt: 'Persist me',
+          improvedPrompt: 'Persisted',
+          savedAt: 4567
+        }
+      ]
+    })
+  })
+
+  it('appends new saves to persisted prompts and seeds state from them', () => {
+    store.setState({
+      settings: {
+        promptAnalyzerSavedPrompts: [
+          {
+            id: 'existing-1',
+            originalPrompt: 'Old original',
+            improvedPrompt: 'Old improved',
+            savedAt: 12345
+          }
+        ]
+      } as AppState['settings']
+    })
+    store.getState().hydrateSavedPrompts()
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-4') })
+
+    store.setState({ originalPrompt: 'New original', improvedPrompt: 'New improved' })
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toHaveLength(2)
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      promptAnalyzerSavedPrompts: [
+        expect.objectContaining({ id: 'existing-1' }),
+        expect.objectContaining({
+          id: 'saved-4',
+          originalPrompt: 'New original',
+          improvedPrompt: 'New improved'
+        })
+      ]
+    })
+  })
+
+  it('does not persist when there is nothing to save', () => {
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toEqual([])
+    expect(mockUpdateSettings).not.toHaveBeenCalled()
+  })
+
+  it('reset keeps persisted saved prompts from settings', () => {
+    store.setState({
+      settings: {
+        promptAnalyzerSavedPrompts: [
+          {
+            id: 'existing-1',
+            originalPrompt: 'Old original',
+            improvedPrompt: 'Old improved',
+            savedAt: 12345
+          }
+        ]
+      } as AppState['settings']
+    })
+    store.getState().hydrateSavedPrompts()
+    store.getState().togglePanel()
+    store.getState().setHasWarned(true)
+
+    store.getState().reset()
+
+    expect(store.getState().savedPrompts).toEqual([
+      {
+        id: 'existing-1',
+        originalPrompt: 'Old original',
+        improvedPrompt: 'Old improved',
+        savedAt: 12345
+      }
+    ])
+    expect(store.getState().isPanelOpen).toBe(false)
+    expect(store.getState().hasWarned).toBe(false)
   })
 
   it('reset returns to initial state', () => {
