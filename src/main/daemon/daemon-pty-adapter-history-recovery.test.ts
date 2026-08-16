@@ -30,7 +30,7 @@ import {
 } from './terminal-history-recovery-quarantine'
 import { encodeLogBatch, encodeLogHeader } from './terminal-history-log'
 import type { HistoryReader } from './history-reader'
-import type { SubprocessHandle } from './session'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import type { DaemonFileLog } from './daemon-file-log'
 import type * as DaemonHealthModule from './daemon-health'
 import { getDaemonSocketPath } from './daemon-spawner'
@@ -206,7 +206,7 @@ describe('DaemonPtyAdapter history recovery', () => {
     const originalCheckpoint = manager.checkpoint.bind(manager)
     let malformedLog!: Buffer
     vi.spyOn(manager, 'checkpoint').mockImplementation(async (...args) => {
-      await originalCheckpoint(...args)
+      const result = await originalCheckpoint(...args)
       const sessionDir = join(historyDir, getHistorySessionDirName(id))
       const checkpoint = JSON.parse(readFileSync(join(sessionDir, 'checkpoint.json'), 'utf-8'))
       malformedLog = Buffer.concat([
@@ -217,6 +217,7 @@ describe('DaemonPtyAdapter history recovery', () => {
         ])
       ])
       writeFileSync(join(sessionDir, 'output.log'), malformedLog)
+      return result
     })
 
     await historyAdapter.shutdown(id, { immediate: true, keepHistory: true })
@@ -243,13 +244,12 @@ describe('DaemonPtyAdapter history recovery', () => {
       let releaseCheckpoint!: () => void
       let checkpointCalls = 0
       vi.spyOn(manager, 'checkpoint').mockImplementation(async (...args) => {
-        checkpointCalls++
-        if (checkpointCalls === 1) {
+        if (++checkpointCalls === 1) {
           await new Promise<void>((resolve) => {
             releaseCheckpoint = resolve
           })
         }
-        await originalCheckpoint(...args)
+        return originalCheckpoint(...args)
       })
 
       const shuttingDown = historyAdapter.shutdown(id, {

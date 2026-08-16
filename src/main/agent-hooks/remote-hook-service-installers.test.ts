@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { parse as parseJsonc } from 'jsonc-parser'
 import type { SFTPWrapper } from 'ssh2'
 
 vi.mock('electron', () => ({
@@ -7,33 +8,20 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { CodexHookService } from '../codex/hook-service'
-import { DroidHookService } from '../droid/hook-service'
-import { CursorHookService } from '../cursor/hook-service'
-import { CommandCodeHookService } from '../command-code/hook-service'
-import { GeminiHookService } from '../gemini/hook-service'
-import { AntigravityHookService } from '../antigravity/hook-service'
-import { AmpHookService } from '../amp/hook-service'
-import { ClaudeHookService } from '../claude/hook-service'
-import { GrokHookService } from '../grok/hook-service'
-import { CopilotHookService } from '../copilot/hook-service'
-import { HermesHookService } from '../hermes/hook-service'
-import { DevinHookService } from '../devin/hook-service'
-import { KimiHookService } from '../kimi/hook-service'
+import { CodexHookService, codexHookService } from '../codex/hook-service'
+import { DroidHookService, droidHookService } from '../droid/hook-service'
+import { CursorHookService, cursorHookService } from '../cursor/hook-service'
+import { CommandCodeHookService, commandCodeHookService } from '../command-code/hook-service'
+import { GeminiHookService, geminiHookService } from '../gemini/hook-service'
+import { AntigravityHookService, antigravityHookService } from '../antigravity/hook-service'
+import { AmpHookService, ampHookService } from '../amp/hook-service'
+import { ClaudeHookService, claudeHookService } from '../claude/hook-service'
+import { GrokHookService, grokHookService } from '../grok/hook-service'
+import { CopilotHookService, copilotHookService } from '../copilot/hook-service'
+import { HermesHookService, hermesHookService } from '../hermes/hook-service'
+import { DevinHookService, devinHookService } from '../devin/hook-service'
+import { KimiHookService, kimiHookService } from '../kimi/hook-service'
 import { openClaudeHookService } from '../openclaude/hook-service'
-import { ampHookService } from '../amp/hook-service'
-import { antigravityHookService } from '../antigravity/hook-service'
-import { claudeHookService } from '../claude/hook-service'
-import { codexHookService } from '../codex/hook-service'
-import { copilotHookService } from '../copilot/hook-service'
-import { cursorHookService } from '../cursor/hook-service'
-import { droidHookService } from '../droid/hook-service'
-import { commandCodeHookService } from '../command-code/hook-service'
-import { geminiHookService } from '../gemini/hook-service'
-import { devinHookService } from '../devin/hook-service'
-import { grokHookService } from '../grok/hook-service'
-import { hermesHookService } from '../hermes/hook-service'
-import { kimiHookService } from '../kimi/hook-service'
 import { MANAGED_AGENT_HOOK_INSTALLERS } from './managed-agent-hook-controls'
 import {
   installRemoteManagedAgentHooks,
@@ -428,7 +416,11 @@ describe('remote hook service installers', () => {
     expect(grokConfig.hooks.PostToolUse?.[0]?.matcher).toBe('.*')
     expect(grokConfig.hooks.StopFailure?.[0]?.matcher).toBeUndefined()
 
-    const devinConfig = JSON.parse(devin.fs.files.get('/home/dev/.config/devin/config.json')!) as {
+    const devinText = devin.fs.files.get('/home/dev/.config/devin/config.json')!
+    // Why: Devin config.json is JSONC — parse it as such, and assert the user's comment
+    // survived. Asserting with JSON.parse would only pass if the install had stripped it.
+    expect(devinText).toContain('// Existing Devin config comment')
+    const devinConfig = parseJsonc(devinText) as {
       permissions: { mode: string }
       hooks: Record<string, { matcher?: string; hooks?: { command: string }[] }[]>
     }
@@ -720,10 +712,39 @@ describe('remote hook service installers', () => {
 
   it('installs Droid and Copilot when running the aggregate remote installer (issue #7253)', async () => {
     const { sftp } = createFakeSftp()
-    const results = await installRemoteManagedAgentHooks(sftp, '/home/dev')
+    const results = await installRemoteManagedAgentHooks(sftp, '/home/dev', {
+      agents: REMOTE_MANAGED_HOOK_INSTALLER_AGENTS
+    })
     const byAgent = new Map(results.map((r) => [r.agent, r.state]))
     expect(byAgent.get('droid')).toBe('installed')
     expect(byAgent.get('copilot')).toBe('installed')
+  })
+
+  it('installs only positively detected remote agents', async () => {
+    const { sftp, fs } = createFakeSftp()
+
+    const results = await installRemoteManagedAgentHooks(sftp, '/home/dev', {
+      agents: ['codex']
+    })
+
+    expect(results.map((result) => result.agent)).toEqual(['codex'])
+    const paths = [...fs.files.keys(), ...fs.dirs]
+    for (const unusedHome of ['.factory', '.gemini', '.grok', '.hermes', '.commandcode']) {
+      expect(paths.some((path) => path.includes(`/home/dev/${unusedHome}`))).toBe(false)
+    }
+  })
+
+  it('fails closed when the agent allowlist is omitted or empty (issue #11641)', async () => {
+    const { sftp, fs } = createFakeSftp()
+
+    await expect(installRemoteManagedAgentHooks(sftp, '/home/dev')).resolves.toEqual([])
+    await expect(
+      installRemoteManagedAgentHooks(sftp, '/home/dev', { agents: [] })
+    ).resolves.toEqual([])
+
+    // Why: fake SFTP seeds '/' only; no agent config homes or files may appear.
+    expect([...fs.files.keys()]).toEqual([])
+    expect([...fs.dirs]).toEqual(['/'])
   })
 
   it('stops before the next installer when its relay request is cancelled', async () => {
@@ -745,7 +766,10 @@ describe('remote hook service installers', () => {
       const { sftp } = createFakeSftp()
 
       await expect(
-        installRemoteManagedAgentHooks(sftp, '/home/dev', { signal: controller.signal })
+        installRemoteManagedAgentHooks(sftp, '/home/dev', {
+          signal: controller.signal,
+          agents: REMOTE_MANAGED_HOOK_INSTALLER_AGENTS
+        })
       ).rejects.toMatchObject({ name: 'AbortError' })
       expect(claudeInstall).toHaveBeenCalledTimes(1)
       expect(openClaudeInstall).not.toHaveBeenCalled()

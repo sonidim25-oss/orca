@@ -50,7 +50,7 @@ afterEach(() => {
 
 describe('orchestration send structured payload flags', () => {
   beforeEach(() => {
-    callMock.mockReset().mockResolvedValue({ result: { message: { id: 'msg_1' } } })
+    callMock.mockReset().mockResolvedValue({ result: { lifecycle: { action: 'completed' } } })
     getTerminalHandleMock.mockReset()
     delete process.env.ORCA_TERMINAL_HANDLE
     delete process.env.ORCA_PANE_KEY
@@ -94,6 +94,7 @@ describe('orchestration send structured payload flags', () => {
         filesModified: ['src/a.ts', 'src/b.ts'],
         reportPath: 'reports/done.md'
       }),
+      waitForLifecycleSettlement: true,
       devMode: false
     })
   })
@@ -207,6 +208,7 @@ describe('orchestration send structured payload flags', () => {
       priority: undefined,
       threadId: undefined,
       payload: JSON.stringify({ outcome: 'succeeded' }),
+      waitForLifecycleSettlement: true,
       devMode: false
     })
   })
@@ -233,6 +235,7 @@ describe('orchestration send structured payload flags', () => {
       priority: undefined,
       threadId: undefined,
       payload: JSON.stringify({ outcome: 'succeeded' }),
+      waitForLifecycleSettlement: true,
       devMode: false
     })
   })
@@ -686,11 +689,13 @@ describe('orchestration timeout flag validation', () => {
     // the non-consuming all mode instead of the destructive mark-read default.
     expect(callMock).toHaveBeenCalledWith('orchestration.check', {
       terminal: 'term_worker',
+      terminalPaneKey: undefined,
       unread: false,
       peek: true,
       all: undefined,
       types: undefined,
       format: undefined,
+      compatibilityCliCommand: expect.stringMatching(/^orca(?:-ide)?$/),
       run: undefined,
       ack: undefined,
       wait: true,
@@ -818,7 +823,9 @@ describe('orchestration timeout flag validation', () => {
         resume: undefined,
         options: undefined,
         timeoutMs: 123,
-        from: 'term_worker'
+        from: 'term_worker',
+        compatibilityCliCommand: expect.stringMatching(/^orca(?:-ide)?$/),
+        compatibilityWindowsCommand: undefined
       },
       { timeoutMs: 5_123, orchestrationCapability: undefined }
     )
@@ -847,7 +854,9 @@ describe('orchestration timeout flag validation', () => {
         resume: 'msg_question',
         options: undefined,
         timeoutMs: undefined,
-        from: 'term_worker'
+        from: 'term_worker',
+        compatibilityCliCommand: expect.stringMatching(/^orca(?:-ide)?$/),
+        compatibilityWindowsCommand: undefined
       },
       { timeoutMs: 605_000, orchestrationCapability: undefined }
     )

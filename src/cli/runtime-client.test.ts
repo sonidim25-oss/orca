@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { createServer, type Socket } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ORCHESTRATION_CONTRACT_RUNTIME_CAPABILITY } from '../shared/protocol-version'
-import { RuntimeClient, RuntimeRpcFailureError } from './runtime-client'
+import { RuntimeClient, RuntimeClientError, RuntimeRpcFailureError } from './runtime-client'
 import { launchOrcaApp } from './runtime/launch'
 
 vi.mock('./runtime/launch', () => ({
@@ -103,20 +103,40 @@ describe.skipIf(process.platform === 'win32')('RuntimeClient', () => {
     await new Promise<void>((resolve) => server.listen(endpoint, resolve))
     writeMetadata(userDataPath, endpoint)
 
+    const priorLaunchToken = process.env.ORCA_AGENT_LAUNCH_TOKEN
+    process.env.ORCA_AGENT_LAUNCH_TOKEN = 'launch-secret'
     const client = new RuntimeClient(userDataPath, 500)
-    await client.call(
-      'orchestration.send',
-      { subject: 'hello' },
-      {
-        orchestrationRequestId: 'mutation_explicit'
+    try {
+      await client.call(
+        'orchestration.send',
+        { subject: 'hello' },
+        {
+          orchestrationRequestId: 'mutation_explicit'
+        }
+      )
+      await client.call('orchestration.taskList', {})
+      const secondClient = new RuntimeClient(userDataPath, 500)
+      await secondClient.call('orchestration.taskList', {})
+    } finally {
+      if (priorLaunchToken === undefined) {
+        delete process.env.ORCA_AGENT_LAUNCH_TOKEN
+      } else {
+        process.env.ORCA_AGENT_LAUNCH_TOKEN = priorLaunchToken
       }
-    )
-    await client.call('orchestration.taskList', {})
+    }
 
     expect(requests[0]?.method).toBe('status.get')
+    expect(requests[0]?.compatibilityInvocationId).toBeUndefined()
     expect(requests[1]?.orchestrationRequestId).toBe('mutation_explicit')
     expect(requests[1]?.orchestrationContractVersion).toBe(1)
+    expect(requests[1]?.compatibilityInvocationId).toBe('mutation_explicit')
+    expect(requests[1]?.orchestrationCompatibilityEvidence).toMatchObject({
+      launchToken: 'launch-secret'
+    })
     expect(requests[2]?.orchestrationRequestId).toBeUndefined()
+    expect(requests[2]?.compatibilityInvocationId).not.toBe(requests[1]?.compatibilityInvocationId)
+    expect(requests[3]?.method).toBe('orchestration.taskList')
+    expect(requests[3]?.compatibilityInvocationId).not.toBe(requests[1]?.compatibilityInvocationId)
   })
 
   it('rejects an old local runtime before sending an orchestration mutation', async () => {
@@ -393,6 +413,36 @@ describe.skipIf(process.platform === 'win32')('RuntimeClient', () => {
     await expect(client.call('status.get')).rejects.toMatchObject({
       code: 'runtime_timeout'
     })
+  })
+
+  it('preserves a dropped read-only orchestration failure exactly', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-runtime-client-'))
+    const endpoint = join(userDataPath, 'runtime.sock')
+    let request: Record<string, unknown> | undefined
+    const server = createServer((socket) => {
+      sockets.add(socket)
+      socket.once('close', () => sockets.delete(socket))
+      socket.once('data', (data) => {
+        request = JSON.parse(String(data).trim()) as Record<string, unknown>
+        socket.end()
+      })
+    })
+    servers.add(server)
+    await new Promise<void>((resolve) => server.listen(endpoint, resolve))
+    writeMetadata(userDataPath, endpoint)
+    const client = new RuntimeClient(userDataPath, 100)
+
+    const failure = await client
+      .call('orchestration.workerShow', { dispatch: 'ctx_1' })
+      .catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(RuntimeClientError)
+    expect((failure as RuntimeClientError).message).toBe(
+      'The Orca runtime closed the connection before responding. Restart Orca and try again.'
+    )
+    expect((failure as RuntimeClientError).data).toBeUndefined()
+    expect(request).toMatchObject({ method: 'orchestration.workerShow' })
+    expect(request).not.toHaveProperty('orchestrationRequestId')
   })
 
   it('allows a per-call timeout override for long runtime requests', async () => {

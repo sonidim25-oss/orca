@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL } from '../../../../shared/prompt-analyzer-types'
-import type { GlobalSettings } from '../../../../shared/types'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { resolveActivePromptAnalyzerModel } from '../resolve-active-model'
 
 type ModelSettings = Pick<

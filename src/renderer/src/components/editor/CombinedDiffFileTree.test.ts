@@ -11,7 +11,8 @@ import {
   getFilteredCombinedDiffFileTreeEntries,
   isCombinedDiffFileTreeQueryTooLarge
 } from './combined-diff-file-tree-model'
-import type { GitBranchChangeEntry, GitStatusEntry } from '../../../../shared/types'
+import type { GitBranchChangeEntry } from '../../../../shared/git-diff-compare-types'
+import type { GitStatusEntry } from '../../../../shared/git-status-types'
 
 describe('CombinedDiffFileTree navigation mapping', () => {
   it('disambiguates uncommitted entries with the same path by area', () => {
@@ -77,6 +78,7 @@ describe('CombinedDiffFileTree navigation mapping', () => {
   it('expands a collapsed target section and scrolls to its index', () => {
     const entry: GitBranchChangeEntry = { path: 'src/view.ts', status: 'modified' }
     const toggleSection = vi.fn()
+    const loadSection = vi.fn()
     const scrollToIndex = vi.fn()
     const index = handleCombinedDiffFileTreeNavigation({
       mode: 'branch',
@@ -87,11 +89,13 @@ describe('CombinedDiffFileTree navigation mapping', () => {
         { key: 'combined-branch:src/view.ts' }
       ]),
       toggleSection,
+      loadSection,
       scrollToIndex
     })
 
     expect(index).toBe(1)
     expect(toggleSection).toHaveBeenCalledWith(1)
+    expect(loadSection).toHaveBeenCalledWith(1)
     expect(scrollToIndex).toHaveBeenCalledWith(1)
   })
 

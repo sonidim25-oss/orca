@@ -9,6 +9,7 @@ import type {
   SupportedProvider
 } from '@/prompt-analyzer'
 import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
+import { translate } from '@/i18n/i18n'
 import { resolvePromptAnalyzerSelection } from '@/prompt-analyzer/resolve-active-model'
 
 const getInitialState = (settings?: AppState['settings']) => ({
@@ -74,7 +75,11 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
   reportMissingApiKey: (provider: SupportedProvider) =>
     set({
       state: 'error' as PromptAnalyzerState,
-      error: `Missing ${getProviderLabel(provider)} API key. Please add it in Settings > Prompt Analyzer.`
+      error: translate(
+        'promptAnalyzer.error.missingApiKey',
+        'Missing {{provider}} API key. Please add it in Settings > Prompt Analyzer.',
+        { provider: getProviderLabel(provider) }
+      )
     }),
 
   dismissResult: () =>

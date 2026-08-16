@@ -1,4 +1,4 @@
-import type { GlobalSettings } from '../../../shared/types'
+import type { GlobalSettings } from '../../../shared/global-settings-types'
 import { PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL } from '../../../shared/prompt-analyzer-types'
 import { DEFAULT_PROVIDER } from './constants'
 import type { SupportedProvider } from './types'

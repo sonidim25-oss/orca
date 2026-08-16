@@ -25,28 +25,42 @@ import { buildWindowsPtyCompatibilityOptions } from '@/lib/pane-manager/windows-
 import { buildTerminalKeyboardProtocolOptions } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import { resolvePaneKeyboardProtocolAgent } from './terminal-keyboard-protocol-pane-agent'
 import { useAppStore } from '@/store'
+import type { DirectSshPaneRetryAttemptId } from '@/store/slices/direct-ssh-terminal-recovery'
 import {
   createFilePathLinkProvider,
   getTerminalFileOpenHint,
   getTerminalUrlOpenHint,
   installFilePathLinkClickFallback
 } from './terminal-link-handlers'
+import {
+  terminalHttpLinkActionDestinationsFor,
+  terminalUrlOpenHintOptionsFor
+} from './terminal-link-open-hints'
 import { createTerminalHandleLinkProvider } from './terminal-handle-links'
 import type { LinkHandlerDeps } from './terminal-link-handlers'
 import { handleOscLink } from './terminal-osc-link-routing'
 import { handleTerminalWebLinkClick } from './terminal-web-link-click'
 import {
   installHttpLinkClickFallback,
+  type TerminalHttpLinkActionDestinations,
   type TerminalLinkRoutingPreferenceRequester
 } from './terminal-url-link-hit-testing'
-import { resolveLocalhostHttpLinkDisplayUrl } from '@/lib/http-link-routing'
+import { installTerminalLinkifierClickPriming } from './terminal-linkifier-click-priming'
+import { installTerminalLinkPointerGesture } from './terminal-link-pointer-gesture'
 import type {
-  GlobalSettings,
-  SetupSplitDirection,
-  TerminalTab,
-  TerminalLayoutSnapshot,
-  TuiAgent
-} from '../../../../shared/types'
+  TerminalLinkActionContext,
+  TerminalLinkActionRequester
+} from './terminal-link-action-request'
+import {
+  resolveLocalhostHttpLinkDisplayUrl,
+  type HttpLinkSourceOwner
+} from '@/lib/http-link-routing'
+import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-owner'
+import { canOpenWorkspaceBrowserTabOnRuntime } from '@/lib/workspace-browser-tab-open'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { TuiAgent } from '../../../../shared/tui-agent'
+import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type { TerminalPaneSplitSource } from '../../../../shared/feature-education-telemetry'
 import type { EventProps } from '../../../../shared/telemetry-events'
 import type { StartupCommandDelivery } from '../../../../shared/codex-startup-delivery'
@@ -58,21 +72,27 @@ import { resolveTerminalFontWeights } from '../../../../shared/terminal-fonts'
 import {
   buildFontFamily,
   normalizeTerminalLayoutSnapshot,
-  RESET_KITTY_KEYBOARD_PROTOCOL,
   replayTerminalLayout,
   restoreScrollbackBuffers
 } from './layout-serialization'
-import { scheduleTerminalInitialRenderSettled } from './terminal-initial-render-settle'
+import { RESET_KITTY_KEYBOARD_PROTOCOL } from '../../../../shared/terminal-mode-reset-profiles'
 import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { applyExpandedLayoutTo, restoreExpandedLayoutFrom } from './expand-collapse'
-import { applyTerminalAppearance, installMode2031Handlers } from './terminal-appearance'
-import { pushMode2031SeedReply } from './terminal-mode-2031-replies'
+import { applyTerminalAppearance } from './terminal-appearance'
 import { createOsc52OscHandler } from './osc52-clipboard'
-import { showOsc52ClipboardBlockedToast } from './osc52-clipboard-blocked-toast'
+import {
+  showOsc52ClipboardBlockedToast,
+  showOsc52ClipboardFailedToast
+} from './osc52-clipboard-toast'
+import { copyTerminalSelection } from './terminal-selection-copy'
 import { parseOsc7 } from './parse-osc7'
 import { guardParserHandler } from './terminal-parser-handler-guard'
 import { resolveTerminalJisYenInput } from './terminal-jis-yen-input'
+import {
+  isNonLatinControlChordKeyup,
+  resolveNonLatinControlChordInput
+} from './terminal-non-latin-control-chord'
 import { installTerminalImeCompositionTracker } from './terminal-ime-composition-tracker'
 import { installTerminalImeLinuxCandidateState } from './terminal-ime-linux-candidate-state'
 import {
@@ -81,10 +101,6 @@ import {
   createTerminalImePendingCandidateKeyReleases,
   shouldApplyTerminalImePendingCandidateKeyRelease
 } from './terminal-ime-candidate-key-release-guard'
-import {
-  DISABLED_MAC_NATIVE_TEXT_INPUT_SOURCE_FEATURES,
-  getMacNativeTextInputSourceTracker
-} from './terminal-ime-input-source'
 import { installTerminalImeNativeTextForwarder } from './terminal-ime-native-text-forwarder'
 import {
   shouldBypassXtermKeyboardEvent,
@@ -98,7 +114,6 @@ import {
 import type { PaneCwdMap } from './resolve-split-cwd'
 import { installMouseHideWhileTyping } from './mouse-hide-while-typing'
 import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-option-as-alt'
-import { resolveEffectiveTerminalAppearance } from '@/lib/terminal-theme'
 import { connectPanePty } from './pty-connection'
 import type { PtyTransport } from './pty-transport'
 import type { PtyTransportRecoveryState } from './pty-transport-types'
@@ -106,15 +121,17 @@ import {
   reconcileMissingSessions,
   type ReconcilableBinding
 } from './terminal-dead-session-reconcile'
-import { getRemoteRuntimePtyEnvironmentId } from '@/runtime/runtime-terminal-stream'
 import { getConnectionId } from '@/lib/connection-context'
+import { resolvePaneWslDistro } from './terminal-pane-wsl-distro'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { isPaneReplaying, type ReplayingPanesRef } from './replay-guard'
+import { canReleaseReplayedScrollbackFromStore } from './replayed-scrollback-store-release'
 import { fitAndFocusPanes, fitPanes } from './pane-helpers'
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { syncTerminalScrollIntentSoon } from '@/lib/pane-manager/terminal-scroll-intent-settle'
 import { registerRuntimeTerminalTab, scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { captureParkedTerminalPaneCandidates } from './terminal-parked-tab-watchers'
+import { useTerminalParkMountIntent } from './use-terminal-park-mount-intent'
 import { e2eConfig } from '@/lib/e2e-config'
 import {
   PRIMARY_SELECTION_MAX_LENGTH,
@@ -132,7 +149,10 @@ import {
 import { acquireWebviewsDragPassthrough } from '../browser-pane/webview-registry'
 import { recordCreatedTerminalPaneSplit } from './terminal-pane-split-completion'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
-import { seedStartupSessionRestoredBanner } from './session-restored-banner-pane-state'
+import {
+  seedStartupSessionRestoredBanner,
+  type SessionRestoredBannerReason
+} from './session-restored-banner-pane-state'
 import {
   resolveTabTitleAfterPaneClose,
   shouldClearLaunchAgentForClosedPane
@@ -191,8 +211,12 @@ function reportActiveRendererPtyForPane(
   }
 }
 
-async function formatTerminalUrlTooltip(url: string, openLinkHint: string): Promise<string | null> {
-  const labeledUrl = await resolveLocalhostHttpLinkDisplayUrl(url)
+async function formatTerminalUrlTooltip(
+  url: string,
+  openLinkHint: string,
+  sourceOwner: HttpLinkSourceOwner
+): Promise<string | null> {
+  const labeledUrl = await resolveLocalhostHttpLinkDisplayUrl(url, sourceOwner)
   if (!labeledUrl) {
     return null
   }
@@ -243,11 +267,13 @@ type UseTerminalPaneLifecycleDeps = {
   settings: GlobalSettings | null | undefined
   settingsRef: React.RefObject<GlobalSettings | null | undefined>
   requestOpenLinksInAppPreference: TerminalLinkRoutingPreferenceRequester
+  requestTerminalLinkAction: TerminalLinkActionRequester
   /** Resolved Option-as-Alt: `'auto'` already mapped to `'true'|'false'` via the layout probe, which lives outside the settings store. */
   effectiveMacOptionAsAlt: EffectiveMacOptionAsAlt
   effectiveMacOptionAsAltRef: React.RefObject<EffectiveMacOptionAsAlt>
   initialLayoutRef: React.RefObject<TerminalLayoutSnapshot>
   managerRef: React.RefObject<PaneManager | null>
+  getTabWideAgentHintLeafId: () => string | null
   containerRef: React.RefObject<HTMLDivElement | null>
   expandedStyleSnapshotRef: React.MutableRefObject<
     Map<HTMLElement, { display: string; flex: string }>
@@ -275,14 +301,19 @@ type UseTerminalPaneLifecycleDeps = {
   updateTabTitle: (tabId: string, title: string) => void
   setRuntimePaneTitle: (tabId: string, paneId: number, title: string) => void
   clearRuntimePaneTitle: (tabId: string, paneId: number) => void
-  updateTabPtyId: (tabId: string, ptyId: string, replacedPtyId?: string) => void
+  updateTabPtyId: (
+    tabId: string,
+    ptyId: string,
+    replacedPtyId?: string,
+    directSshRetryAttemptId?: DirectSshPaneRetryAttemptId
+  ) => void
   markWorktreeUnread: (worktreeId: string) => void
   markTerminalTabUnread: (tabId: string) => void
   markTerminalPaneUnread: (paneKey: string) => void
   clearWorktreeUnread: (worktreeId: string) => void
   clearTerminalTabUnread: (tabId: string) => void
   clearTerminalPaneUnread: (paneKey: string) => void
-  onShowSessionRestoredBanner: (paneId: number) => void
+  onShowSessionRestoredBanner: (paneId: number, reason?: SessionRestoredBannerReason) => void
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
     terminalTitle?: string
@@ -307,7 +338,6 @@ type UseTerminalPaneLifecycleDeps = {
   setPaneLayoutRevision: React.Dispatch<React.SetStateAction<number>>
   resolveExternalPaneDropTarget?: PaneExternalDropResolver
   onExternalPaneDrop?: PaneExternalDropHandler
-  onInitialRenderSettledRef: React.RefObject<(() => void) | undefined>
 }
 
 export function suppressIntentionalPaneCloseExit(
@@ -456,6 +486,19 @@ export function splitPaneWithOneShotStartup<TPane>(
   }
 }
 
+/** Scopes `deps.mountFollowsTerminalPark` to the restored-layout replay. */
+export function replayLayoutWithOneShotParkIntent<TRestored>(
+  deps: { mountFollowsTerminalPark: boolean },
+  replayLayout: () => TRestored
+): TRestored {
+  // Why: only panes reconstructed by this replay belong to the park reveal; later splits must use ordinary reconnect semantics.
+  try {
+    return replayLayout()
+  } finally {
+    deps.mountFollowsTerminalPark = false
+  }
+}
+
 export function shouldDetachPaneTransportOnUnmount(args: {
   tabStillExists: boolean
   tabId: string
@@ -493,6 +536,77 @@ export function getPreviousVisibleForTerminalPane(args: {
   return args.previous.isVisible
 }
 
+type TerminalPaneCloseManager = {
+  closePane: (paneId: number) => void
+  detachPaneForExternalMove: (paneId: number) => boolean
+  retirePanePreservingPty: (paneId: number) => boolean
+  getNumericIdForLeaf: (leafId: string) => number | null
+  getPanes: () => unknown[]
+}
+
+export function applyTerminalPaneCloseRequest(args: {
+  detail: CloseTerminalPaneDetail
+  manager: TerminalPaneCloseManager
+  closeTab: () => void
+  closeTabPreservingPty: () => void
+  getPtyIdForLeaf?: (leafId: string) => string | undefined
+}): 'ignored' | 'pane' | 'tab' {
+  if (
+    args.detail.expectedPtyId &&
+    (!args.detail.leafId ||
+      args.getPtyIdForLeaf?.(args.detail.leafId) !== args.detail.expectedPtyId)
+  ) {
+    return 'ignored'
+  }
+  const paneRuntimeId =
+    args.detail.paneRuntimeId ??
+    (args.detail.leafId ? args.manager.getNumericIdForLeaf(args.detail.leafId) : null)
+  if (paneRuntimeId === null || paneRuntimeId === undefined) {
+    return 'ignored'
+  }
+  if (args.manager.getPanes().length <= 1) {
+    if (args.detail.preservePty) {
+      args.closeTabPreservingPty()
+    } else {
+      args.closeTab()
+    }
+    return 'tab'
+  }
+  if (args.detail.preservePty) {
+    if (args.detail.retireSurface) {
+      args.manager.retirePanePreservingPty(paneRuntimeId)
+    } else {
+      args.manager.detachPaneForExternalMove(paneRuntimeId)
+    }
+  } else {
+    args.manager.closePane(paneRuntimeId)
+  }
+  return 'pane'
+}
+
+export function retireMountedTerminalPaneSurface(args: {
+  paneKey: string
+  paneId: number
+  tabId: string
+  ptyId: string | null
+  retireAgentPaneAuthority: (
+    paneKey: string,
+    options?: { preserveSleepingAgentSession?: boolean }
+  ) => void
+  syncPanePtyLayoutBinding: (paneId: number, ptyId: string | null) => void
+  clearTabPtyId: (tabId: string, ptyId: string) => void
+  transport?: { detach?: () => void; destroy?: () => void }
+}): void {
+  args.retireAgentPaneAuthority(args.paneKey, {
+    preserveSleepingAgentSession: true
+  })
+  if (args.ptyId) {
+    args.syncPanePtyLayoutBinding(args.paneId, null)
+    args.clearTabPtyId(args.tabId, args.ptyId)
+  }
+  args.transport?.detach?.()
+}
+
 /** Wires mounted terminal panes to renderer state and terminal event handling. */
 export function useTerminalPaneLifecycle({
   tabId,
@@ -507,10 +621,12 @@ export function useTerminalPaneLifecycle({
   settings,
   settingsRef,
   requestOpenLinksInAppPreference,
+  requestTerminalLinkAction,
   effectiveMacOptionAsAlt,
   effectiveMacOptionAsAltRef,
   initialLayoutRef,
   managerRef,
+  getTabWideAgentHintLeafId,
   containerRef,
   expandedStyleSnapshotRef,
   paneFontSizesRef,
@@ -556,8 +672,7 @@ export function useTerminalPaneLifecycle({
   setPaneCount,
   setPaneLayoutRevision,
   resolveExternalPaneDropTarget,
-  onExternalPaneDrop,
-  onInitialRenderSettledRef
+  onExternalPaneDrop
 }: UseTerminalPaneLifecycleDeps): void {
   const terminalScrollbackRows = normalizeDesktopTerminalScrollbackRows(
     settings?.terminalScrollbackRows
@@ -567,15 +682,20 @@ export function useTerminalPaneLifecycle({
   const systemPrefersDarkRef = useRef(systemPrefersDark)
   systemPrefersDarkRef.current = systemPrefersDark
   const previousVisibleForReconcileRef = useRef<TerminalPaneVisibilitySnapshot | null>(null)
+  const mountFollowsTerminalPark = useTerminalParkMountIntent(tabId)
   const linkProviderDisposablesRef = useRef(new Map<number, IDisposable>())
   const terminalHandleLinkDisposablesRef = useRef(new Map<number, IDisposable>())
+  const linkifierClickPrimingDisposablesRef = useRef(new Map<number, IDisposable>())
+  const linkPointerGesturesRef = useRef(
+    new Map<number, ReturnType<typeof installTerminalLinkPointerGesture>>()
+  )
   const fileLinkClickFallbackDisposablesRef = useRef(new Map<number, IDisposable>())
-  const httpLinkClickFallbackDisposablesRef = useRef(new Map<number, IDisposable>())
+  const httpLinkClickFallbackDisposablesRef = useRef(
+    new Map<number, ReturnType<typeof installHttpLinkClickFallback>>()
+  )
   // Why: read settingsRef at fire time so toggling "copy on select" applies without recreating panes.
   const selectionDisposablesRef = useRef(new Map<number, IDisposable>())
   const selectionCaptureTimersRef = useRef(new Map<number, number>())
-  const mode2031DisposablesRef = useRef(new Map<number, IDisposable[]>())
-  const mode2031SeedAttemptTokensRef = useRef(new Map<number, symbol>())
   const osc52DisposablesRef = useRef(new Map<number, IDisposable>())
   const osc7DisposablesRef = useRef(new Map<number, IDisposable>())
   const mouseHideDisposablesRef = useRef(new Map<number, IDisposable>())
@@ -601,30 +721,6 @@ export function useTerminalPaneLifecycle({
     )
   }
 
-  const pushMode2031ForPane = (paneId: number): void => {
-    const attemptToken = Symbol()
-    mode2031SeedAttemptTokensRef.current.set(paneId, attemptToken)
-    pushMode2031SeedReply(paneId, {
-      hasPane: (candidateId) =>
-        managerRef.current?.getPanes().some((pane) => pane.id === candidateId) === true,
-      isSubscribed: (candidateId) => paneMode2031Ref.current.get(candidateId) === true,
-      // Why: an older connect retry must not answer a later resubscription.
-      isCurrentAttempt: (candidateId) =>
-        mode2031SeedAttemptTokensRef.current.get(candidateId) === attemptToken,
-      getTransport: (candidateId) => paneTransportsRef.current.get(candidateId),
-      getMode: () => {
-        const currentSettings = settingsRef.current
-        return currentSettings
-          ? resolveEffectiveTerminalAppearance(currentSettings, systemPrefersDarkRef.current).mode
-          : null
-      },
-      recordMode: (candidateId, mode) => paneLastThemeModeRef.current.set(candidateId, mode),
-      schedule: (callback, delayMs) => {
-        window.setTimeout(callback, delayMs)
-      }
-    })
-  }
-
   // Initialize PaneManager instance once
   useEffect(() => {
     const container = containerRef.current
@@ -636,6 +732,8 @@ export function useTerminalPaneLifecycle({
     const panePtyBindings = panePtyBindingsRef.current
     const linkDisposables = linkProviderDisposablesRef.current
     const terminalHandleLinkDisposables = terminalHandleLinkDisposablesRef.current
+    const linkifierClickPrimingDisposables = linkifierClickPrimingDisposablesRef.current
+    const linkPointerGestures = linkPointerGesturesRef.current
     const fileLinkClickFallbackDisposables = fileLinkClickFallbackDisposablesRef.current
     const httpLinkClickFallbackDisposables = httpLinkClickFallbackDisposablesRef.current
     const selectionDisposables = selectionDisposablesRef.current
@@ -659,8 +757,50 @@ export function useTerminalPaneLifecycle({
     queuedInitialCwdRef.current = initialCwdResolution.queuedInitialCwd
     const startupCwd = initialCwdResolution.startupCwd
     const terminalHomePath = resolveTerminalHomePathFromEnv(startup?.env)
+    const wslDistro = getConnectionId(worktreeId)
+      ? null
+      : resolvePaneWslDistro(useAppStore.getState(), worktreeId, worktreePath)
     const getPaneLinkCwd = (paneId: number): string =>
       resolvePaneLinkCwd(paneCwdRef.current, paneId, startupCwd)
+    const getHttpLinkSourceOwnerForPane = (paneId: number) =>
+      resolveTerminalHttpLinkSourceOwner(paneTransportsRef.current.get(paneId))
+    const canOpenRuntimeBrowserForPane = (paneId: number): boolean => {
+      const sourceOwner = getHttpLinkSourceOwnerForPane(paneId)
+      return (
+        sourceOwner.kind === 'runtime' &&
+        canOpenWorkspaceBrowserTabOnRuntime(
+          useAppStore.getState(),
+          worktreeId,
+          sourceOwner.runtimeEnvironmentId
+        )
+      )
+    }
+    const getHttpLinkActionDestinations = (paneId: number): TerminalHttpLinkActionDestinations => {
+      const sourceOwner = getHttpLinkSourceOwnerForPane(paneId)
+      return terminalHttpLinkActionDestinationsFor(
+        settingsRef.current,
+        sourceOwner,
+        canOpenRuntimeBrowserForPane(paneId)
+      )
+    }
+    const getLinkActionContext = (paneId: number): TerminalLinkActionContext | null => {
+      if (settingsRef.current?.terminalLinkActionPopoverEnabled === false) {
+        return null
+      }
+      const pane = managerRef.current?.getPanes().find((candidate) => candidate.id === paneId)
+      const pointerGesture = linkPointerGestures.get(paneId)
+      const ptyMouseSuppression = httpLinkClickFallbackDisposables.get(paneId)?.ptyMouseSuppression
+      if (!pane || !pointerGesture || !ptyMouseSuppression) {
+        return null
+      }
+      return {
+        paneId,
+        pointerGesture,
+        claimPtyMouse: ptyMouseSuppression.claimAction,
+        request: requestTerminalLinkAction,
+        focusTerminal: () => pane.terminal.focus()
+      }
+    }
     // Why: lifecycle-scoped cache for cross-SSH/runtime existence probes; may hold temporarily stale entries.
     const pathExistsCache = new Map<string, boolean>()
     const linkDeps: LinkHandlerDeps = {
@@ -669,13 +809,15 @@ export function useTerminalPaneLifecycle({
       startupCwd,
       getPaneLinkCwd,
       terminalHomePath,
+      wslDistro,
       managerRef,
       linkProviderDisposablesRef,
       pathExistsCache,
       getRuntimeEnvironmentIdForPane: (paneId) => {
-        const ptyId = paneTransportsRef.current.get(paneId)?.getPtyId()
-        return ptyId ? getRemoteRuntimePtyEnvironmentId(ptyId) : null
-      }
+        const sourceOwner = getHttpLinkSourceOwnerForPane(paneId)
+        return sourceOwner.kind === 'runtime' ? sourceOwner.runtimeEnvironmentId : null
+      },
+      getLinkActionContext
     }
     let resizeRaf: number | null = null
     const queueResizeAll = (focusActive: boolean): void => {
@@ -721,7 +863,6 @@ export function useTerminalPaneLifecycle({
       initialLayoutRef.current = hydratedInitialScrollback.layout
     }
     let shouldPersistLayout = false
-    let cancelInitialRenderSettle: (() => void) | null = null
     const startupWithSetupSplitWait =
       startup && setupSplit
         ? { ...startup, waitForSetupSplitDirection: setupSplit.direction }
@@ -731,6 +872,7 @@ export function useTerminalPaneLifecycle({
       worktreeId,
       cwd: startupCwd,
       startup: startupWithSetupSplitWait,
+      mountFollowsTerminalPark,
       paneTransportsRef,
       paneMode2031Ref,
       paneKittyKeyboardModesRef,
@@ -761,10 +903,18 @@ export function useTerminalPaneLifecycle({
       setCacheTimerStartedAt,
       syncPanePtyLayoutBinding,
       clearExitedPanePtyLayoutBinding,
-      // Why: record the main-answered 2031 subscribe in the CSI handler's registries, else theme flips never push CSI 997.
-      recordPaneMode2031Subscription: (paneId: number, repliedMode: 'dark' | 'light') => {
+      deferPtyInput: (paneId, data, forward) => {
+        const suppression = httpLinkClickFallbackDisposables.get(paneId)?.ptyMouseSuppression
+        if (!suppression) {
+          forward(data)
+          return
+        }
+        suppression.handlePtyInput(data, forward)
+      },
+      // Why: record the fact-observed 2031 subscribe in the pane registries, else theme flips never push CSI 997.
+      recordPaneMode2031Subscription: (paneId: number, subscribedMode: 'dark' | 'light') => {
         paneMode2031Ref.current.set(paneId, true)
-        paneLastThemeModeRef.current.set(paneId, repliedMode)
+        paneLastThemeModeRef.current.set(paneId, subscribedMode)
       },
       restoredPtyIdByLeafId: initialLayoutRef.current.ptyIdsByLeafId ?? {}
     }
@@ -774,11 +924,21 @@ export function useTerminalPaneLifecycle({
       worktreeId,
       getManager: () => managerRef.current,
       getContainer: () => containerRef.current,
-      getPtyIdForPane: (paneId) => paneTransportsRef.current.get(paneId)?.getPtyId() ?? null
+      getPtyIdForPane: (paneId) => paneTransportsRef.current.get(paneId)?.getPtyId() ?? null,
+      getTabWideAgentHintLeafId
     })
 
     const fileOpenLinkHint = getTerminalFileOpenHint()
-    const urlOpenLinkHint = getTerminalUrlOpenHint()
+    // Why: read settingsRef at fire time so toggling link routing applies without recreating panes.
+    const getUrlOpenLinkHint = (paneId: number): string =>
+      getTerminalUrlOpenHint({
+        ...terminalUrlOpenHintOptionsFor(
+          settingsRef.current,
+          getHttpLinkSourceOwnerForPane(paneId),
+          canOpenRuntimeBrowserForPane(paneId)
+        ),
+        showActions: settingsRef.current?.terminalLinkActionPopoverEnabled !== false
+      })
     const osc7UncHost = extractUncHost(startupCwd)
 
     let releaseWebviewDragPassthrough: (() => void) | null = null
@@ -786,26 +946,6 @@ export function useTerminalPaneLifecycle({
     const manager = new PaneManager(container, {
       // `spawnHints.cwd` (from Split actions) lets the new PTY inherit the source pane's cwd — see docs/ssh-split-pane-inherit-cwd.md.
       onPaneCreated: (pane, spawnHints) => {
-        // Install mode 2031 handlers before PTY attach so the child's initial CSI ?2031h is captured.
-        const mode2031Disposables = installMode2031Handlers({
-          paneId: pane.id,
-          parser: pane.terminal.parser,
-          onSubscribe: () => {
-            // Why: for hidden-delivery-gate PTYs, main's '2031-subscribe' fact is the sole responder — don't send a second reply.
-            const binding = panePtyBindings.get(pane.id) as
-              | (IDisposable & { isHiddenDeliveryGateManagedPty?: () => boolean })
-              | undefined
-            if (binding?.isHiddenDeliveryGateManagedPty?.()) {
-              return
-            }
-            pushMode2031ForPane(pane.id)
-          },
-          isReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
-          paneMode2031: paneMode2031Ref.current,
-          paneLastThemeMode: paneLastThemeModeRef.current
-        })
-        mode2031DisposablesRef.current.set(pane.id, mode2031Disposables)
-
         // OSC 52 — TUI-initiated clipboard writes (Zellij/tmux/nvim/fzf/ssh).
         // Why: read settingsRef at fire time so mid-session gate toggles apply; return true in both paths so xterm doesn't fall through.
         const osc52Disposable = pane.terminal.parser.registerOscHandler(
@@ -815,8 +955,9 @@ export function useTerminalPaneLifecycle({
             createOsc52OscHandler({
               getSettingEnabled: () => settingsRef.current?.terminalAllowOsc52Clipboard,
               getReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
-              writeClipboardText: (text) => window.api.ui.writeClipboardText(text),
-              showBlockedWriteToast: showOsc52ClipboardBlockedToast
+              writeClipboardText: (text) => window.api.ui.writeTerminalClipboardText(text),
+              showBlockedWriteToast: showOsc52ClipboardBlockedToast,
+              showWriteFailedToast: showOsc52ClipboardFailedToast
             })
           )
         )
@@ -845,6 +986,7 @@ export function useTerminalPaneLifecycle({
 
         // Why: let host-handled keys bypass xterm's kitty CSI-u encoder — with kittyKeyboard on it preventDefaults Cmd+C and blocks Chromium's native copy. See xterm-bypass-policy.ts.
         let pendingTerminalInterruptKeyup = false
+        let claimedNonLatinControlChordCode: string | null = null
         const pendingTerminalImeCandidateKeyReleases =
           createTerminalImePendingCandidateKeyReleases()
         const isMac = navigator.userAgent.includes('Mac')
@@ -856,7 +998,6 @@ export function useTerminalPaneLifecycle({
         const linuxImeCandidateState = isLinux
           ? installTerminalImeLinuxCandidateState(pane.terminal.element)
           : null
-        const macNativeTextInputSourceTracker = isMac ? getMacNativeTextInputSourceTracker() : null
         const imeCompositionTracker = installTerminalImeCompositionTracker(pane.terminal.element)
         imeCompositionDisposablesRef.current.set(pane.id, {
           dispose: () => {
@@ -864,15 +1005,14 @@ export function useTerminalPaneLifecycle({
             linuxImeCandidateState?.dispose()
           }
         })
-        // Why: only known macOS native text paths (physical CJK/Vietnamese IME) need the keydown bypass; synthetic Unicode lacks physical key identity.
+        // Why: macOS commits an input source's substituted text through the input event alone, so printable keydowns must not reach xterm's encoder.
         const imeNativeTextForwarder = isMac
           ? installTerminalImeNativeTextForwarder({
               terminalElement: pane.terminal.element,
               isComposing: () => imeCompositionTracker.isActive(),
               sendInput: (data) => pane.terminal.input(data),
-              getInputSourceFeatures: () =>
-                macNativeTextInputSourceTracker?.getFeatures() ??
-                DISABLED_MAC_NATIVE_TEXT_INPUT_SOURCE_FEATURES
+              getKittyKeyboardFlags: () =>
+                paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
             })
           : {
               claimKeyEvent: () => false,
@@ -944,6 +1084,22 @@ export function useTerminalPaneLifecycle({
             observeLinuxCandidateEvent()
             return false
           }
+          // Why here: after the Ctrl+C interrupt arm, which owns its own ETX and kitty reset.
+          // This covers the other 25 letters, whose only failure is the kitty encoder reading
+          // the layout glyph out of `key`. Sending the C0 byte reproduces what the OS control
+          // table produces for that physical key on any layout.
+          if (isNonLatinControlChordKeyup(e, claimedNonLatinControlChordCode)) {
+            claimedNonLatinControlChordCode = null
+            observeLinuxCandidateEvent()
+            return false
+          }
+          const nonLatinControlChord = resolveNonLatinControlChordInput(e)
+          if (nonLatinControlChord) {
+            claimedNonLatinControlChordCode = e.code
+            pane.terminal.input(nonLatinControlChord)
+            observeLinuxCandidateEvent()
+            return false
+          }
           if (shouldSuppressTerminalModifierKeyboardEvent(e)) {
             // Why: stale Kitty keyboard reporting can encode standalone modifier presses before Ctrl+C reaches the interrupt handler.
             observeLinuxCandidateEvent()
@@ -989,12 +1145,15 @@ export function useTerminalPaneLifecycle({
 
           const shouldBypass = shouldBypassXtermKeyboardEvent(e, {
             isMac,
-            hasSelection: pane.terminal.hasSelection()
+            hasSelection: pane.terminal.hasSelection(),
+            kittyKeyboardFlags: paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
           })
           observeLinuxCandidateEvent()
           return !shouldBypass
         })
 
+        const linkPointerGesture = installTerminalLinkPointerGesture(pane.terminal)
+        linkPointerGestures.set(pane.id, linkPointerGesture)
         const linkProviderDisposable = pane.terminal.registerLinkProvider(
           createFilePathLinkProvider(pane.id, linkDeps, pane.linkTooltip, fileOpenLinkHint)
         )
@@ -1006,10 +1165,13 @@ export function useTerminalPaneLifecycle({
                 ?.terminal ?? null,
             getRuntimeEnvironmentId: () =>
               linkDeps.getRuntimeEnvironmentIdForPane?.(pane.id) ?? null,
-            linkTooltip: pane.linkTooltip
+            linkTooltip: pane.linkTooltip,
+            getLinkActionContext: () => getLinkActionContext(pane.id)
           })
         )
         terminalHandleLinkDisposablesRef.current.set(pane.id, terminalHandleLinkDisposable)
+        const linkifierClickPrimingDisposable = installTerminalLinkifierClickPriming(pane.terminal)
+        linkifierClickPrimingDisposablesRef.current.set(pane.id, linkifierClickPrimingDisposable)
         const fileLinkClickFallbackDisposable = installFilePathLinkClickFallback(
           pane.id,
           pane.terminal,
@@ -1018,7 +1180,10 @@ export function useTerminalPaneLifecycle({
         fileLinkClickFallbackDisposablesRef.current.set(pane.id, fileLinkClickFallbackDisposable)
         const httpLinkClickFallbackDisposable = installHttpLinkClickFallback(pane.terminal, {
           ...linkDeps,
-          requestOpenLinksInAppPreference
+          getSourceOwner: () => getHttpLinkSourceOwnerForPane(pane.id),
+          requestOpenLinksInAppPreference,
+          getLinkActionContext: () => getLinkActionContext(pane.id),
+          getActionDestinations: () => getHttpLinkActionDestinations(pane.id)
         })
         httpLinkClickFallbackDisposables.set(pane.id, httpLinkClickFallbackDisposable)
         seedStartupSessionRestoredBanner(ptyDeps.startup, pane.id, onShowSessionRestoredBanner)
@@ -1065,11 +1230,10 @@ export function useTerminalPaneLifecycle({
           if (!shouldWriteClipboard) {
             return
           }
-          const selection = pane.terminal.getSelection()
-          if (!selection) {
-            return
-          }
-          void window.api.ui.writeClipboardText(selection).catch(() => {
+          void copyTerminalSelection({
+            terminal: pane.terminal,
+            writeClipboardText: window.api.ui.writeTerminalClipboardText
+          }).catch(() => {
             /* ignore clipboard write failures */
           })
         })
@@ -1088,7 +1252,10 @@ export function useTerminalPaneLifecycle({
               ...linkDeps,
               startupCwd: getPaneLinkCwd(pane.id),
               runtimeEnvironmentId: linkDeps.getRuntimeEnvironmentIdForPane?.(pane.id) ?? null,
-              requestOpenLinksInAppPreference
+              sourceOwner: getHttpLinkSourceOwnerForPane(pane.id),
+              requestOpenLinksInAppPreference,
+              linkActionContext: getLinkActionContext(pane.id),
+              actionDestinations: getHttpLinkActionDestinations(pane.id)
             })
             // Why: link activation can steal focus before the click's mouseup reaches xterm, stranding its drag-select
             // listener (runaway selection until next click/Esc); clearSelection detaches it (SelectionService._removeMouseDownListeners).
@@ -1100,9 +1267,11 @@ export function useTerminalPaneLifecycle({
           hover: (_event, text) => {
             oscTooltipHoverToken += 1
             const hoverToken = oscTooltipHoverToken
+            const urlOpenLinkHint = getUrlOpenLinkHint(pane.id)
             pane.linkTooltip.textContent = `${text} (${urlOpenLinkHint})`
             pane.linkTooltip.style.display = ''
-            void formatTerminalUrlTooltip(text, urlOpenLinkHint).then((nextText) => {
+            const sourceOwner = getHttpLinkSourceOwnerForPane(pane.id)
+            void formatTerminalUrlTooltip(text, urlOpenLinkHint, sourceOwner).then((nextText) => {
               if (hoverToken === oscTooltipHoverToken && nextText) {
                 pane.linkTooltip.textContent = nextText
               }
@@ -1143,6 +1312,7 @@ export function useTerminalPaneLifecycle({
       onPaneClosed: (paneId, closedPane) => {
         onPtyRecoveryStateRef?.current?.(paneId, null)
         const isDetachedToTab = closedPane?.reason === 'detach'
+        const isRetiredSurface = closedPane?.reason === 'retire'
         const linkProviderDisposable = linkProviderDisposablesRef.current.get(paneId)
         if (linkProviderDisposable) {
           linkProviderDisposable.dispose()
@@ -1152,6 +1322,17 @@ export function useTerminalPaneLifecycle({
         if (terminalHandleLinkDisposable) {
           terminalHandleLinkDisposable.dispose()
           terminalHandleLinkDisposablesRef.current.delete(paneId)
+        }
+        const linkifierClickPrimingDisposable =
+          linkifierClickPrimingDisposablesRef.current.get(paneId)
+        if (linkifierClickPrimingDisposable) {
+          linkifierClickPrimingDisposable.dispose()
+          linkifierClickPrimingDisposablesRef.current.delete(paneId)
+        }
+        const linkPointerGesture = linkPointerGestures.get(paneId)
+        if (linkPointerGesture) {
+          linkPointerGesture.dispose()
+          linkPointerGestures.delete(paneId)
         }
         const fileLinkClickFallbackDisposable =
           fileLinkClickFallbackDisposablesRef.current.get(paneId)
@@ -1185,15 +1366,7 @@ export function useTerminalPaneLifecycle({
           window.clearTimeout(selectionCaptureTimer)
           selectionCaptureTimersRef.current.delete(paneId)
         }
-        const mode2031Disposables = mode2031DisposablesRef.current.get(paneId)
-        if (mode2031Disposables) {
-          for (const d of mode2031Disposables) {
-            d.dispose()
-          }
-          mode2031DisposablesRef.current.delete(paneId)
-        }
         paneMode2031Ref.current.delete(paneId)
-        mode2031SeedAttemptTokensRef.current.delete(paneId)
         paneKittyKeyboardModesRef.current.delete(paneId)
         paneLastThemeModeRef.current.delete(paneId)
         const osc52Disposable = osc52DisposablesRef.current.get(paneId)
@@ -1227,14 +1400,25 @@ export function useTerminalPaneLifecycle({
           panePtyBindings.delete(paneId)
         }
         const leafId = closedPane?.leafId
-        if (leafId && !isDetachedToTab) {
+        if (leafId && isRetiredSurface) {
+          retireMountedTerminalPaneSurface({
+            paneKey: makePaneKey(tabId, leafId),
+            paneId,
+            tabId,
+            ptyId: closedPtyId,
+            retireAgentPaneAuthority: useAppStore.getState().retireAgentPaneAuthority,
+            syncPanePtyLayoutBinding,
+            clearTabPtyId,
+            ...(transport ? { transport } : {})
+          })
+        } else if (leafId && !isDetachedToTab) {
           // Why: revoke only this pane's authority; an exact tombstone blocks queued hooks without suppressing siblings.
           const paneKey = makePaneKey(tabId, leafId)
           useAppStore.getState().retireAgentPaneAuthority(paneKey)
         }
-        if (transport) {
+        if (transport && !isRetiredSurface) {
           if (isDetachedToTab) {
-            // Why: detach hands the PTY to a new tab, so drop renderer listeners without a process teardown.
+            // Why: detach hands the PTY to a new tab, so drop renderer listeners without process teardown.
             transport.detach?.()
           } else {
             const ptyId = suppressIntentionalPaneCloseExit(
@@ -1342,7 +1526,10 @@ export function useTerminalPaneLifecycle({
       onExternalPaneDrop,
       terminalOptions: () => {
         const currentSettings = settingsRef.current
-        const terminalFontWeights = resolveTerminalFontWeights(currentSettings?.terminalFontWeight)
+        const terminalFontWeights = resolveTerminalFontWeights(
+          currentSettings?.terminalFontWeight,
+          currentSettings?.terminalFontWeightBold
+        )
         const cursorStyle = currentSettings?.terminalCursorStyle ?? 'block'
         const storeState = useAppStore.getState()
         const currentTab = storeState.tabsByWorktree[worktreeId]?.find(
@@ -1393,8 +1580,10 @@ export function useTerminalPaneLifecycle({
       },
       terminalTuiScrollSensitivity: () =>
         normalizeTerminalTuiMouseWheelMultiplier(settingsRef.current?.terminalTuiScrollSensitivity),
-      onLinkClick: (event, url) => {
-        const activePane = managerRef.current?.getActivePane()
+      onLinkClick: (paneId, event, url) => {
+        const activePane = managerRef.current
+          ?.getPanes()
+          .find((candidate) => candidate.id === paneId)
         handleTerminalWebLinkClick(url, event, {
           ...linkDeps,
           terminal: activePane?.terminal ?? null,
@@ -1402,10 +1591,17 @@ export function useTerminalPaneLifecycle({
           runtimeEnvironmentId: activePane
             ? (linkDeps.getRuntimeEnvironmentIdForPane?.(activePane.id) ?? null)
             : null,
-          requestOpenLinksInAppPreference
+          sourceOwner: activePane
+            ? getHttpLinkSourceOwnerForPane(activePane.id)
+            : { kind: 'local' },
+          requestOpenLinksInAppPreference,
+          linkActionContext: getLinkActionContext(paneId),
+          actionDestinations: getHttpLinkActionDestinations(paneId)
         })
       },
-      formatLinkTooltip: (url, openLinkHint) => formatTerminalUrlTooltip(url, openLinkHint),
+      linkOpenHint: getUrlOpenLinkHint,
+      formatLinkTooltip: (paneId, url, openLinkHint) =>
+        formatTerminalUrlTooltip(url, openLinkHint, getHttpLinkSourceOwnerForPane(paneId)),
       // Why: hidden panes stay mounted so PTYs survive navigation, but their WebGL contexts drain Chromium's budget and can blank visible panes.
       initialRenderingSuspended: !isVisibleRef.current,
       // Why: remote-runtime panes honor the GPU setting too; late snapshots are handled by post-replay rebuildPaneWebgl in pty-connection.
@@ -1419,7 +1615,9 @@ export function useTerminalPaneLifecycle({
       window.__paneManagers = window.__paneManagers ?? new Map()
       window.__paneManagers.set(tabId, manager)
     }
-    const restoredPaneByLeafId = replayTerminalLayout(manager, initialLayoutRef.current, isActive)
+    const restoredPaneByLeafId = replayLayoutWithOneShotParkIntent(ptyDeps, () =>
+      replayTerminalLayout(manager, initialLayoutRef.current, isActive)
+    )
 
     const restoredBuffers = initialLayoutRef.current.buffersByLeafId
     restoreScrollbackBuffers(
@@ -1429,12 +1627,23 @@ export function useTerminalPaneLifecycle({
       replayingPanesRef,
       restoredViewportBlankingPanesRef
     )
-    if (restoredBuffers && initialLayoutRef.current.scrollbackRefsByLeafId) {
+    const hasScrollbackRefs = Boolean(initialLayoutRef.current.scrollbackRefsByLeafId)
+    if (
+      restoredBuffers &&
+      canReleaseReplayedScrollbackFromStore({
+        hasScrollbackRefs,
+        worktreeId,
+        repos: useAppStore.getState().repos
+      })
+    ) {
       const layoutWithoutRestoredBuffers = { ...initialLayoutRef.current }
       delete layoutWithoutRestoredBuffers.buffersByLeafId
-      initialLayoutRef.current = layoutWithoutRestoredBuffers
+      if (hasScrollbackRefs) {
+        // Why refs-only: without a disk ref this mount is the sole replay source, so a re-run (StrictMode) still needs the bytes.
+        initialLayoutRef.current = layoutWithoutRestoredBuffers
+      }
       if (initialLayoutHadBuffers) {
-        // Why: raw replay bytes belong to this mount only; drop legacy hydrated copies from Zustand so session writes stay ref-only.
+        // Why: xterm owns the replayed bytes now; leaving the park-time copy in Zustand retains up to 512KB/leaf for the app's lifetime.
         useAppStore.getState().setTabLayout(tabId, layoutWithoutRestoredBuffers)
       }
     }
@@ -1521,28 +1730,6 @@ export function useTerminalPaneLifecycle({
     queueResizeAll(isActive)
     persistLayoutSnapshot()
     scheduleRuntimeGraphSync()
-    if (onInitialRenderSettledRef.current) {
-      cancelInitialRenderSettle = scheduleTerminalInitialRenderSettled({
-        manager,
-        isCurrent: () => managerRef.current === manager,
-        isReplaySettled: () => replayingPanesRef.current.size === 0,
-        isContentReady: () => {
-          const terminal = (manager.getActivePane() ?? manager.getPanes()[0])?.terminal
-          if (!terminal) {
-            return false
-          }
-          const buffer = terminal.buffer.active
-          const viewportEnd = Math.min(buffer.length, buffer.viewportY + terminal.rows)
-          for (let row = buffer.viewportY; row < viewportEnd; row += 1) {
-            if (buffer.getLine(row)?.translateToString(true).trim()) {
-              return true
-            }
-          }
-          return false
-        },
-        onSettled: () => onInitialRenderSettledRef.current?.()
-      })
-    }
 
     // Why: deliver the startup command via the PTY connection path (waits for shell readiness), not terminal.paste() which can lose input before the shell reads stdin.
     function onCliSplitPane(event: Event): void {
@@ -1599,21 +1786,37 @@ export function useTerminalPaneLifecycle({
       if (!mgr) {
         return
       }
-      if (mgr.getPanes().length <= 1) {
-        // Why: route through closeTerminalTab (not raw closeTab) so a pinned tab hits the confirmation guard — this was the one path that silently dropped pinned tabs.
-        closeTerminalTab(tabId)
-      } else {
-        mgr.closePane(detail.paneRuntimeId)
-        scheduleRuntimeGraphSync()
-        syncCanExpandState()
-        queueResizeAll(isActive)
-        persistLayoutSnapshot()
+      const result = applyTerminalPaneCloseRequest({
+        detail,
+        manager: mgr,
+        getPtyIdForLeaf: (leafId) =>
+          useAppStore.getState().terminalLayoutsByTabId[tabId]?.ptyIdsByLeafId?.[leafId],
+        // Why: CLI-driven pane close; its caller is answered immediately and cannot wait on a modal.
+        closeTab: () => closeTerminalTab(tabId, { skipRunningProcessConfirm: true }),
+        closeTabPreservingPty: () => {
+          const store = useAppStore.getState()
+          if (detail.retireSurface && detail.leafId) {
+            store.retireAgentPaneAuthority(makePaneKey(tabId, detail.leafId), {
+              preserveSleepingAgentSession: true
+            })
+          }
+          store.closeTab(tabId, {
+            reason: 'pty-exit',
+            captureRecentlyClosed: false
+          })
+        }
+      })
+      if (result !== 'pane') {
+        return
       }
+      scheduleRuntimeGraphSync()
+      syncCanExpandState()
+      queueResizeAll(isActive)
+      persistLayoutSnapshot()
     }
     window.addEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
 
     return () => {
-      cancelInitialRenderSettle?.()
       window.removeEventListener(SPLIT_TERMINAL_PANE_EVENT, onCliSplitPane)
       window.removeEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
       const currentWorktreeTabs = useAppStore.getState().tabsByWorktree[worktreeId]
@@ -1633,6 +1836,14 @@ export function useTerminalPaneLifecycle({
         disposable.dispose()
       }
       terminalHandleLinkDisposables.clear()
+      for (const disposable of linkifierClickPrimingDisposables.values()) {
+        disposable.dispose()
+      }
+      linkifierClickPrimingDisposables.clear()
+      for (const gesture of linkPointerGestures.values()) {
+        gesture.dispose()
+      }
+      linkPointerGestures.clear()
       for (const disposable of fileLinkClickFallbackDisposables.values()) {
         disposable.dispose()
       }

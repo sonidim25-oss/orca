@@ -5,8 +5,8 @@ import { promisify } from 'node:util'
 import path, { win32 } from 'node:path'
 import type { RelayDispatcher } from './dispatcher'
 import { buildRelayCommandEnv } from './relay-command-env'
-import { isPwshAvailable } from '../main/pwsh'
-import { isWslAvailable, listWslDistros } from '../main/wsl'
+import { isPwshAvailableAsync } from '../main/pwsh'
+import { isWslAvailableAsync, listWslDistrosAsync } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
 import { findExistingPosixShellPath } from '../shared/posix-shell-path'
@@ -103,11 +103,11 @@ export class PreflightHandler {
     hostPlatform: NodeJS.Platform | null
   }> {
     const [wslAvailable, pwshAvailable, gitBashAvailable] = await Promise.all([
-      Promise.resolve(isWslAvailable()).catch(() => false),
-      Promise.resolve(isPwshAvailable()).catch(() => false),
+      isWslAvailableAsync().catch(() => false),
+      isPwshAvailableAsync().catch(() => false),
       Promise.resolve(isGitBashAvailable()).catch(() => false)
     ])
-    const wslDistros = wslAvailable ? await Promise.resolve(listWslDistros()).catch(() => []) : []
+    const wslDistros = wslAvailable ? await listWslDistrosAsync().catch(() => []) : []
     return {
       wslAvailable,
       wslDistros,

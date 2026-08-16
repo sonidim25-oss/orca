@@ -7,7 +7,8 @@ import {
   MAX_QUICK_COMMAND_REPO_ID_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
 } from '../../../../shared/terminal-quick-commands'
-import type { PersistedUIState } from '../../../../shared/types'
+import { DEFAULT_WORKTREE_CARD_PROPERTIES } from '../../../../shared/worktree/card-properties'
+import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcRequest } from '../core'
 import { RpcDispatcher } from '../dispatcher'
@@ -20,6 +21,7 @@ function makeRequest(method: string, params?: unknown): RpcRequest {
 describe('client UI RPC methods', () => {
   it('returns the runtime host agent settings needed by mobile create flows', async () => {
     const settings = {
+      worktreeVisibilityDefaults: { external: 'show' as const },
       defaultTuiAgent: 'codex',
       disabledTuiAgents: ['claude'],
       agentCmdOverrides: { codex: 'codex --profile work' },
@@ -91,6 +93,17 @@ describe('client UI RPC methods', () => {
 
     const response = await dispatcher.dispatch(
       makeRequest('settings.update', {
+        worktreeVisibilityDefaults: {
+          external: 'show',
+          customSources: [
+            { id: 'team', rootPath: ' /srv/team ' },
+            { id: 'invalid', rootPath: '../relative' }
+          ],
+          sourcePreferences: {
+            builtIn: { claude: 'show', unknown: 'show' },
+            custom: { team: 'hide', 'bad id': 'show' }
+          }
+        },
         defaultTuiAgent: 'codex',
         disabledTuiAgents: ['claude', 'not-real', 'claude'],
         defaultTaskSource: 'linear',
@@ -107,6 +120,14 @@ describe('client UI RPC methods', () => {
     )
 
     expect(runtime.updateClientSettings).toHaveBeenCalledWith({
+      worktreeVisibilityDefaults: {
+        external: 'show',
+        customSources: [{ id: 'team', rootPath: '/srv/team' }],
+        sourcePreferences: {
+          builtIn: { claude: 'show' },
+          custom: { team: 'hide' }
+        }
+      },
       defaultTuiAgent: 'codex',
       disabledTuiAgents: ['claude'],
       defaultTaskSource: 'linear',
@@ -421,6 +442,24 @@ describe('client UI RPC methods', () => {
     })
   })
 
+  it('does not let a paired client replace the host workspace origin filter', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateUIState: vi.fn(() => getDefaultUIState())
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('ui.set', {
+        hideWorkspacesFromOtherDevices: true,
+        sidebarWidth: 280
+      })
+    )
+
+    expect(response).toMatchObject({ ok: true })
+    expect(runtime.updateUIState).toHaveBeenCalledWith({ sidebarWidth: 280 })
+  })
+
   it('accepts persisted literal UI arrays and nested UI state', async () => {
     const updated: PersistedUIState = {
       ...getDefaultUIState(),
@@ -554,7 +593,8 @@ describe('client UI RPC methods', () => {
     ],
     ['browserImportHintHidden', { browserImportHintHidden: true }],
     ['mobileEmulatorTabIntroDismissed', { mobileEmulatorTabIntroDismissed: true }],
-    ['mobileEmulatorAgentSetupDismissed', { mobileEmulatorAgentSetupDismissed: true }]
+    ['mobileEmulatorAgentSetupDismissed', { mobileEmulatorAgentSetupDismissed: true }],
+    ['alwaysShowDefaultBranchWorkspace', { alwaysShowDefaultBranchWorkspace: false }]
   ])('accepts %s, which the renderer persists through ui.set', async (_label, payload) => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',
@@ -591,6 +631,7 @@ describe('client UI RPC methods', () => {
       showSleepingWorkspaces: true,
       hideDefaultBranchWorkspace: false,
       hideAutomationGeneratedWorkspaces: false,
+      alwaysShowDefaultBranchWorkspace: true,
       showDotfilesByWorktree: { 'repo::/worktree': true },
       filterRepoIds: ['repo-1'],
       acknowledgedAgentsByPaneKey: { 'pane-1': 123 }
@@ -636,20 +677,89 @@ describe('client UI RPC methods', () => {
     expect(runtime.updateUIState).not.toHaveBeenCalled()
   })
 
-  it('rejects unknown worktree card properties', async () => {
+  // Why the contract flipped: an unknown VALUE used to fail the whole batch, so
+  // one drifted enum member took sidebar widths, filters and agent acks down
+  // with it. Unknown KEYS still reject — the parity assertions catch those.
+  it.each([
+    ['worktree card property', { worktreeCardProperties: ['status', 'pr-status'] }],
+    ['feature interaction id', { featureInteractions: { unknown: { firstInteractedAt: 100 } } }],
+    ['feature tip id', { featureTipsSeenIds: ['voice-dictation', 'unknown-tip'] }],
+    ['right sidebar tab', { rightSidebarTab: 'not-a-tab' }]
+  ])('drops an unknown %s instead of rejecting the batch around it', async (_label, drifted) => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',
-      updateUIState: vi.fn()
+      updateUIState: vi.fn(() => getDefaultUIState())
     } as unknown as OrcaRuntimeService
     const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
 
     const response = await dispatcher.dispatch(
-      makeRequest('ui.set', { worktreeCardProperties: ['status', 'pr-status'] })
+      makeRequest('ui.set', { ...drifted, sidebarWidth: 280, filterRepoIds: ['repo-1'] })
     )
 
-    expect(response).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
-    expect(runtime.updateUIState).not.toHaveBeenCalled()
+    expect(response).toMatchObject({ ok: true })
+    expect(runtime.updateUIState).toHaveBeenCalledWith({
+      sidebarWidth: 280,
+      filterRepoIds: ['repo-1']
+    })
   })
+
+  it('accepts the Jira issue card property across the runtime UI boundary', async () => {
+    const updated: PersistedUIState = {
+      ...getDefaultUIState(),
+      worktreeCardProperties: ['status', 'unread', 'jira-issue']
+    }
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateUIState: vi.fn(() => updated)
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('ui.set', { worktreeCardProperties: ['status', 'jira-issue'] })
+    )
+
+    expect(runtime.updateUIState).toHaveBeenCalledWith({
+      worktreeCardProperties: ['status', 'unread', 'jira-issue']
+    })
+    expect(response).toMatchObject({ ok: true, result: { ui: updated } })
+  })
+
+  it('accepts every worktree card property the shared union defines', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateUIState: vi.fn(() => getDefaultUIState())
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    // 'cli' was missing from the schema, so Settings → Default card mode sent a
+    // payload the host rejected outright.
+    const response = await dispatcher.dispatch(
+      makeRequest('ui.set', { worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES] })
+    )
+
+    expect(response).toMatchObject({ ok: true })
+    expect(runtime.updateUIState).toHaveBeenCalledWith({
+      worktreeCardProperties: [...DEFAULT_WORKTREE_CARD_PROPERTIES]
+    })
+  })
+
+  it.each(['workspaces', 'pr-checks', 'plugin:acme.tools/inspector'])(
+    'accepts the %s right sidebar tab a paired client can be sitting on',
+    async (rightSidebarTab) => {
+      const runtime = {
+        getRuntimeId: () => 'test-runtime',
+        updateUIState: vi.fn(() => getDefaultUIState())
+      } as unknown as OrcaRuntimeService
+      const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+      const response = await dispatcher.dispatch(
+        makeRequest('ui.set', { rightSidebarTab, sidebarWidth: 280 })
+      )
+
+      expect(response).toMatchObject({ ok: true })
+      expect(runtime.updateUIState).toHaveBeenCalledWith({ rightSidebarTab, sidebarWidth: 280 })
+    }
+  )
 
   it('rejects star-nag persisted state mutations from remote clients', async () => {
     const runtime = {
@@ -713,40 +823,6 @@ describe('client UI RPC methods', () => {
       const response = await dispatcher.dispatch(makeRequest('ui.set', payload))
       expect(response).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
     }
-    expect(runtime.updateUIState).not.toHaveBeenCalled()
-  })
-
-  it('rejects unknown feature interaction ids', async () => {
-    const runtime = {
-      getRuntimeId: () => 'test-runtime',
-      updateUIState: vi.fn()
-    } as unknown as OrcaRuntimeService
-    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
-
-    const response = await dispatcher.dispatch(
-      makeRequest('ui.set', {
-        featureInteractions: {
-          unknown: { firstInteractedAt: 100 }
-        }
-      })
-    )
-
-    expect(response).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
-    expect(runtime.updateUIState).not.toHaveBeenCalled()
-  })
-
-  it('rejects unknown feature tip ids', async () => {
-    const runtime = {
-      getRuntimeId: () => 'test-runtime',
-      updateUIState: vi.fn()
-    } as unknown as OrcaRuntimeService
-    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
-
-    const response = await dispatcher.dispatch(
-      makeRequest('ui.set', { featureTipsSeenIds: ['voice-dictation', 'unknown-tip'] })
-    )
-
-    expect(response).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
     expect(runtime.updateUIState).not.toHaveBeenCalled()
   })
 

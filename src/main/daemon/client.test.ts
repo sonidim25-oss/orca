@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { DaemonClient } from './client'
-import { encodeNdjson } from './ndjson'
+import type { DaemonPendingRequests } from './daemon-client-pending-requests'
+import { encodeNdjson, NDJSON_MAX_LINE_BYTES, NdjsonLineTooLongError } from './ndjson'
 import type { HelloMessage, DaemonRequest, DaemonEvent } from './types'
 import { getDaemonSocketPath } from './daemon-spawner'
 
@@ -73,6 +74,9 @@ describe('DaemonClient', () => {
       pid: number
       startedAtMs: number
       launchNonce: string
+      entryPath?: string
+      appVersion?: string
+      spawnerExecPath?: string
     }
   }): Promise<void> {
     return new Promise((resolve) => {
@@ -155,7 +159,14 @@ describe('DaemonClient', () => {
     })
 
     it('captures one matching endpoint identity from both authenticated sockets', async () => {
-      const identity = { pid: 123, startedAtMs: 456, launchNonce: 'launch-a' }
+      const identity = {
+        pid: 123,
+        startedAtMs: 456,
+        launchNonce: 'launch-a',
+        entryPath: '/Applications/Orca.app/Contents/Resources/daemon-entry.js',
+        appVersion: '1.2.3',
+        spawnerExecPath: '/Applications/Orca.app/Contents/MacOS/Orca'
+      }
       await startMockDaemon({ helloIdentity: () => identity })
 
       client = new DaemonClient({ socketPath, tokenPath })
@@ -325,9 +336,57 @@ describe('DaemonClient', () => {
       client = new DaemonClient({ socketPath, tokenPath })
       await expect(client.ensureConnected()).rejects.toThrow()
     })
+
+    it('fails a retired endpoint at the connect, not at the token read', async () => {
+      rmSync(tokenPath)
+      client = new DaemonClient({ socketPath, tokenPath })
+
+      const error = (await client
+        .ensureConnected()
+        .catch((err: unknown) => err)) as NodeJS.ErrnoException
+
+      expect(error.syscall).toBe('connect')
+      expect(['ENOENT', 'ECONNREFUSED']).toContain(error.code)
+    })
+
+    it('still attempts the handshake when the token is gone but a daemon is listening', async () => {
+      const hellos: HelloMessage[] = []
+      await startMockDaemon({ onHello: (msg) => hellos.push(msg) })
+      rmSync(tokenPath)
+
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+
+      expect(hellos.length).toBeGreaterThan(0)
+      expect(hellos[0]?.token).toBe('')
+    })
   })
 
   describe('RPC', () => {
+    it('rejects an oversized request before installing a timer or writing', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as {
+        controlSocket: Socket
+        pendingRequests: DaemonPendingRequests
+      }
+      const writeSpy = vi.spyOn(internals.controlSocket, 'write')
+      const timerSpy = vi.spyOn(globalThis, 'setTimeout')
+      try {
+        await expect(
+          client.request('write', { data: 'x'.repeat(NDJSON_MAX_LINE_BYTES) })
+        ).rejects.toBeInstanceOf(NdjsonLineTooLongError)
+
+        expect(timerSpy).not.toHaveBeenCalled()
+        expect(writeSpy).not.toHaveBeenCalled()
+        expect(internals.pendingRequests.size).toBe(0)
+      } finally {
+        timerSpy.mockRestore()
+        writeSpy.mockRestore()
+      }
+    })
+
     it('sends request and receives response', async () => {
       await startMockDaemon({
         onControlMessage: (msg) => {
@@ -561,6 +620,82 @@ describe('DaemonClient', () => {
       // Why: STA-2373 relies on this false to detect a write silently swallowed by a dead socket.
       client = new DaemonClient({ socketPath, tokenPath })
       expect(client.notify('write', { sessionId: 'session-1', data: 'hello' })).toBe(false)
+    })
+
+    it('reports a dropped delivery for an oversized payload without writing', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as { controlSocket: Socket }
+      const writeSpy = vi.spyOn(internals.controlSocket, 'write')
+
+      expect(client.notify('write', { data: 'x'.repeat(NDJSON_MAX_LINE_BYTES) })).toBe(false)
+      expect(writeSpy).not.toHaveBeenCalled()
+    })
+
+    it('rejects an oversized settled notification without disconnecting', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as { controlSocket: Socket }
+      const writeSpy = vi.spyOn(internals.controlSocket, 'write')
+
+      await expect(
+        client.notifyWithSettlement('write', { data: 'x'.repeat(NDJSON_MAX_LINE_BYTES) })
+      ).resolves.toBe(false)
+      expect(writeSpy).not.toHaveBeenCalled()
+      expect(client.isConnected()).toBe(true)
+    })
+
+    it('reports a dropped delivery when the socket write throws', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as { controlSocket: Socket }
+      vi.spyOn(internals.controlSocket, 'write').mockImplementation(() => {
+        throw new Error('EPIPE')
+      })
+
+      // Swallowed, not rethrown: a dead socket must not tear down the caller.
+      expect(client.notify('write', { sessionId: 'session-1', data: 'hello' })).toBe(false)
+    })
+
+    it('reports an asynchronous socket write failure at settlement', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as { controlSocket: Socket }
+      vi.spyOn(internals.controlSocket, 'write').mockImplementation(((
+        _data: string,
+        callback: (error?: Error | null) => void
+      ) => {
+        callback(new Error('EPIPE'))
+        return false
+      }) as Socket['write'])
+
+      await expect(
+        client.notifyWithSettlement('write', { sessionId: 'session-1', data: 'hello' })
+      ).resolves.toBe(false)
+      expect(client.isConnected()).toBe(false)
+    })
+
+    it('disconnects a daemon socket whose write settlement exceeds its deadline', async () => {
+      await startMockDaemon()
+      client = new DaemonClient({ socketPath, tokenPath })
+      await client.ensureConnected()
+      const internals = client as unknown as { controlSocket: Socket }
+      vi.spyOn(internals.controlSocket, 'write').mockImplementation((() => true) as Socket['write'])
+      vi.useFakeTimers()
+
+      const pending = client.notifyWithSettlement(
+        'write',
+        { sessionId: 'session-1', data: 'hello' },
+        5000
+      )
+      await vi.advanceTimersByTimeAsync(5000)
+
+      await expect(pending).resolves.toBe(false)
+      expect(client.isConnected()).toBe(false)
     })
   })
 })

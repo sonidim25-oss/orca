@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { GlobalSettings } from '../../../../shared/types'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { SupportedProvider } from '../../../../shared/prompt-analyzer-types'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
+import { translate } from '@/i18n/i18n'
 import { toast } from 'sonner'
 import {
   getPromptAnalyzerTitle,
@@ -92,12 +93,20 @@ export function PromptAnalyzerSettings({
         await window.api.promptAnalyzer.saveApiKey(keys[provider].draft, provider)
         syncConfigured(provider, true)
         setDraft(provider, '')
-        toast.success(`${getProviderLabel(provider)} API key saved securely`)
+        toast.success(
+          translate('promptAnalyzer.settings.apiKeySaved', '{{provider}} API key saved securely', {
+            provider: getProviderLabel(provider)
+          })
+        )
       } catch (error) {
         toast.error(
           error instanceof Error
             ? error.message
-            : `Failed to save ${getProviderLabel(provider)} API key`
+            : translate(
+                'promptAnalyzer.settings.apiKeySaveFailed',
+                'Failed to save {{provider}} API key',
+                { provider: getProviderLabel(provider) }
+              )
         )
       } finally {
         setPending(provider, false)
@@ -113,12 +122,20 @@ export function PromptAnalyzerSettings({
         await window.api.promptAnalyzer.clearApiKey(provider)
         syncConfigured(provider, false)
         setDraft(provider, '')
-        toast.success(`${getProviderLabel(provider)} API key cleared`)
+        toast.success(
+          translate('promptAnalyzer.settings.apiKeyCleared', '{{provider}} API key cleared', {
+            provider: getProviderLabel(provider)
+          })
+        )
       } catch (error) {
         toast.error(
           error instanceof Error
             ? error.message
-            : `Failed to clear ${getProviderLabel(provider)} API key`
+            : translate(
+                'promptAnalyzer.settings.apiKeyClearFailed',
+                'Failed to clear {{provider}} API key',
+                { provider: getProviderLabel(provider) }
+              )
         )
       } finally {
         setPending(provider, false)
@@ -174,7 +191,11 @@ export function PromptAnalyzerSettings({
                 type="password"
                 value={keys[activeProvider].draft}
                 onChange={(event) => setDraft(activeProvider, event.target.value)}
-                placeholder={keys[activeProvider].configured ? 'Saved securely' : 'Enter API key'}
+                placeholder={
+                  keys[activeProvider].configured
+                    ? translate('promptAnalyzer.settings.apiKeySavedPlaceholder', 'Saved securely')
+                    : translate('promptAnalyzer.settings.apiKeyPlaceholder', 'Enter API key')
+                }
                 autoComplete="off"
                 spellCheck={false}
                 className="w-64"
@@ -185,7 +206,7 @@ export function PromptAnalyzerSettings({
                 disabled={keys[activeProvider].pending || keys[activeProvider].draft.trim() === ''}
                 onClick={() => void saveApiKey(activeProvider)}
               >
-                Save
+                {translate('promptAnalyzer.settings.saveApiKey', 'Save')}
               </Button>
               {keys[activeProvider].configured && (
                 <Button
@@ -195,7 +216,7 @@ export function PromptAnalyzerSettings({
                   disabled={keys[activeProvider].pending}
                   onClick={() => void clearApiKey(activeProvider)}
                 >
-                  Clear
+                  {translate('promptAnalyzer.settings.clearApiKey', 'Clear')}
                 </Button>
               )}
             </div>

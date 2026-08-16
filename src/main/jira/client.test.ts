@@ -111,7 +111,14 @@ async function loadClientModule(options: SafeStorageMockOptions = {}) {
     return { ...actual, homedir: () => tempHome }
   })
 
-  return import('./client')
+  // One import call per reset so the split modules share a single graph (and
+  // thus one copy of the request queue / credential caches) per test.
+  const [client, queue, api] = await Promise.all([
+    import('./client'),
+    import('./request-queue'),
+    import('./authenticated-request')
+  ])
+  return { ...client, ...queue, ...api }
 }
 
 beforeEach(() => {
@@ -199,6 +206,23 @@ describe('Jira client credential storage', () => {
     expect(netFetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
     expect(userAgent).toBe('Orca')
     expect(userAgent).not.toMatch(/Mozilla|Chrome|Safari|AppleWebKit/i)
+  })
+
+  it('removes cancelled queued reads so the request pool recovers', async () => {
+    const jira = await loadClientModule()
+    await Promise.all([jira.acquire(), jira.acquire(), jira.acquire(), jira.acquire()])
+    const controller = new AbortController()
+    const queued = jira.acquire(controller.signal)
+
+    controller.abort()
+
+    await expect(queued).rejects.toMatchObject({ name: 'AbortError' })
+    jira.release()
+    await expect(jira.acquire()).resolves.toBeUndefined()
+    jira.release()
+    jira.release()
+    jira.release()
+    jira.release()
   })
 
   it('downloads same-origin attachment URLs without forwarding auth cross-origin', async () => {
