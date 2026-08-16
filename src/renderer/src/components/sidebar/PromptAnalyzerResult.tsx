@@ -41,7 +41,10 @@ export function PromptAnalyzerResult({
 
       {isTruncated && (
         <p className="text-[11px] text-prompt-analyzer-muted-foreground">
-          Response too large — showing first 8000 characters
+          {translate(
+            'promptAnalyzer.panel.truncatedResponse',
+            'Response too large — showing first 8000 characters'
+          )}
         </p>
       )}
 
@@ -53,7 +56,9 @@ export function PromptAnalyzerResult({
               <span>{translate('promptAnalyzer.panel.save', 'Save')}</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">Save improved prompt</TooltipContent>
+          <TooltipContent side="left">
+            {translate('promptAnalyzer.panel.saveTooltip', 'Save improved prompt')}
+          </TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -80,7 +85,9 @@ export function PromptAnalyzerResult({
               <span>{translate('promptAnalyzer.panel.edit', 'Edit')}</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">Edit original prompt</TooltipContent>
+          <TooltipContent side="left">
+            {translate('promptAnalyzer.panel.editTooltip', 'Edit original prompt')}
+          </TooltipContent>
         </Tooltip>
       </div>
     </div>

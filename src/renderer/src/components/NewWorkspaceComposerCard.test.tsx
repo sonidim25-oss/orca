@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 
-import React from 'react'
-import { act } from 'react'
+import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NewWorkspaceComposerCard from './NewWorkspaceComposerCard'
@@ -32,7 +31,9 @@ vi.mock('@/store', () => ({
         setRuntimeEnvironmentStatus: storeMocks.setRuntimeEnvironmentStatus,
         activeModal: 'none',
         settings: { defaultTuiAgent: null, disabledTuiAgents: [] },
-        updateSettings: vi.fn()
+        updateSettings: vi.fn(),
+        projects: [],
+        repos: []
       }),
     {
       getState: () => ({
@@ -61,6 +62,10 @@ vi.mock('@/components/agent/AgentCombobox', () => ({
 vi.mock('@/components/sidebar/AddRemoteHostDialog', () => ({
   AddRemoteHostDialog: ({ mode }: { mode: 'ssh' | 'server' | null }) =>
     mode ? <div data-testid="add-remote-host-dialog" data-mode={mode} /> : null
+}))
+
+vi.mock('@/components/new-workspace/SetProjectLocationDialog', () => ({
+  SetProjectLocationDialog: () => null
 }))
 
 vi.mock('@/components/sparse/SparseCheckoutPresetSelect', () => ({
@@ -154,9 +159,10 @@ const devboxNeedsSetupHostOption: ProjectHostSetupOption = {
   projectId: 'project-group:platform',
   hostId: 'ssh:devbox',
   label: 'Devbox',
-  detail: 'Project not set up on this host',
+  detail: 'Project location not set',
   isAvailable: true,
-  attention: false
+  attention: false,
+  canSetLocation: true
 }
 
 const disconnectedDevboxNeedsSetupHostOption: ProjectHostSetupOption = {
@@ -168,6 +174,7 @@ const disconnectedDevboxNeedsSetupHostOption: ProjectHostSetupOption = {
   detail: 'Connect this host to set up projects',
   isAvailable: false,
   attention: false,
+  canSetLocation: false,
   connectAction: { kind: 'ssh', targetId: 'devbox' }
 }
 
@@ -180,6 +187,7 @@ const disconnectedBastionNeedsSetupHostOption: ProjectHostSetupOption = {
   detail: 'Connect this host to set up projects',
   isAvailable: false,
   attention: false,
+  canSetLocation: false,
   connectAction: { kind: 'ssh', targetId: 'bastion' }
 }
 
@@ -281,15 +289,18 @@ function changeInputValue(input: HTMLInputElement, value: string): void {
 }
 
 function openRunTargetPicker(container: HTMLElement): void {
-  const runTargetButton = container.querySelector<HTMLButtonElement>('button[role="combobox"]')
-  expect(runTargetButton).toBeTruthy()
-  act(() => runTargetButton?.click())
+  // The field is the search box; clicking its shell focuses it and opens the list.
+  const runTargetShell = container.querySelector<HTMLElement>(
+    'div[data-run-target-combobox-root="true"]'
+  )
+  expect(runTargetShell).toBeTruthy()
+  act(() => runTargetShell?.click())
 }
 
 function findRunTargetItem(label: string): HTMLElement | undefined {
-  // Why: "Add host" is a pinned footer button (mirrors the Project combobox), not a cmdk row.
+  // Rows are listbox options; "Add host" is the pinned footer row (also an option).
   return [
-    ...document.body.querySelectorAll<HTMLElement>('[cmdk-item], [data-run-target-add-host]')
+    ...document.body.querySelectorAll<HTMLElement>('[role="option"], [data-run-target-add-host]')
   ].find((item) => item.textContent?.includes(label))
 }
 
@@ -326,6 +337,26 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
     current?.container.remove()
     current = null
     vi.clearAllMocks()
+  })
+
+  it('keeps the Advanced focus highlight inside the composer edge', () => {
+    current = renderCard()
+
+    const advancedButton = [...current.container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Advanced')
+    )
+
+    expect(advancedButton?.className).toContain('focus-visible:ring-inset')
+  })
+
+  it('removes collapsed Advanced controls from the Tab order', () => {
+    current = renderCard({ advancedOpen: false, branchesEnabled: true })
+
+    const advancedPanel = [...current.container.querySelectorAll('[aria-hidden="true"]')].find(
+      (element) => element.querySelector('textarea[placeholder="Write a note"]') !== null
+    )
+
+    expect(advancedPanel?.hasAttribute('inert')).toBe(true)
   })
 
   it('passes folder child repos into the create-from field without a source trigger', () => {
@@ -579,12 +610,12 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
     openRunTargetPicker(current.container)
 
     const devboxItem = findRunTargetItem('Devbox')
-    expect(devboxItem?.textContent).toContain('Project not set up on this host')
-    // Not-connected rows stay highlightable (not disabled) so they hover like the other
-    // items; a separator sets them off instead of a heading.
-    expect(devboxItem?.getAttribute('aria-disabled')).toBe('false')
-    expect(devboxItem?.getAttribute('data-disabled')).toBe('false')
-    expect(document.body.querySelector('[cmdk-separator]')).toBeTruthy()
+    expect(devboxItem?.textContent).not.toContain('Project location not set')
+    expect(devboxItem?.textContent).toContain('Set project location')
+    // Not-connected rows stay highlightable (never `disabled`) so they hover like
+    // the other rows; they're quieted visually instead.
+    expect(devboxItem?.hasAttribute('data-disabled')).toBe(false)
+    expect(devboxItem?.getAttribute('role')).toBe('option')
   })
 
   it('shows the run target picker for one ready setup so hosts can be added', () => {
@@ -624,10 +655,7 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
 
     openRunTargetPicker(current.container)
     const devboxItem = findRunTargetItem('Devbox')
-    expect(
-      devboxItem?.getAttribute('aria-disabled') === 'true' ||
-        devboxItem?.hasAttribute('data-disabled')
-    ).toBe(true)
+    expect(devboxItem).toBeTruthy()
     const connectButton = [...(devboxItem?.querySelectorAll('button') ?? [])].find((button) =>
       button.textContent?.includes('Connect')
     )
@@ -724,10 +752,10 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
     openRunTargetPicker(current.container)
     const addHost = findRunTargetItem('Add host')
     expect(addHost).toBeTruthy()
-    // Hovering the row (no click) opens its submenu so it feels like a menu. React derives
-    // onPointerEnter from a bubbling pointerover, which is what jsdom dispatches here.
+    // Hovering the row (no click) opens its submenu so it feels like a menu.
+    // Hover arms rows via mousemove, matching the project picker.
     act(() => {
-      addHost?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
+      addHost?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
     })
 
     expect(findRunTargetItem('Add SSH host')).toBeTruthy()
@@ -786,10 +814,7 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
     expect(current.container.textContent).toContain('Run on')
     expect(current.container.textContent).not.toContain('VM recipe')
 
-    const runTargetButton =
-      current.container.querySelector<HTMLButtonElement>('button[role="combobox"]')
-    expect(runTargetButton).toBeTruthy()
-    act(() => runTargetButton?.click())
+    openRunTargetPicker(current.container)
 
     expect(document.body.textContent).toContain('Per-Workspace Environment')
     const ephemeralVmItem = [
@@ -798,7 +823,7 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
     expect(ephemeralVmItem).toBeTruthy()
     act(() => ephemeralVmItem?.click())
 
-    const recipeItem = [...document.body.querySelectorAll<HTMLElement>('[cmdk-item]')].find(
+    const recipeItem = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
       (item) => item.textContent?.includes('Vercel Sandbox')
     )
     expect(recipeItem).toBeTruthy()
@@ -840,12 +865,13 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
       onEphemeralVmRecipeChange: (recipeId) => recipeChanges.push(recipeId)
     })
 
-    const runTargetButton =
-      current.container.querySelector<HTMLButtonElement>('button[role="combobox"]')
-    expect(runTargetButton?.textContent).toContain('Per-Workspace Environment')
-    act(() => runTargetButton?.click())
+    const runTargetShell = current.container.querySelector<HTMLElement>(
+      'div[data-run-target-combobox-root="true"]'
+    )
+    expect(runTargetShell?.textContent).toContain('Per-Workspace Environment')
+    openRunTargetPicker(current.container)
 
-    const builderItem = [...document.body.querySelectorAll<HTMLElement>('[cmdk-item]')].find(
+    const builderItem = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
       (item) => item.textContent?.includes('Builder')
     )
     expect(builderItem).toBeTruthy()
@@ -853,5 +879,44 @@ describe('NewWorkspaceComposerCard folder task source mode', () => {
 
     expect(hostChanges).toEqual(['setup-builder'])
     expect(recipeChanges).toEqual([null])
+  })
+})
+
+describe('NewWorkspaceComposerCard note sizing', () => {
+  // Sizing is layout-driven (field-sizing) rather than a JS measure pass, and happy-dom
+  // has no layout engine, so these assert the class contract that produces the growth.
+  afterEach(() => {
+    act(() => current?.root.unmount())
+    current?.container.remove()
+    current = null
+  })
+
+  function findNoteTextarea(container: HTMLElement): HTMLTextAreaElement {
+    const label = [...container.querySelectorAll('label')].find(
+      (candidate) => candidate.textContent?.trim() === 'Note'
+    )
+    const textarea = label?.parentElement?.querySelector('textarea')
+    expect(textarea).toBeTruthy()
+    return textarea as HTMLTextAreaElement
+  }
+
+  it('sizes from the note value, so a PR prefill written straight to state still shows in full', () => {
+    // #10575: the prefill never fires an input event, so nothing but the value can drive height.
+    current = renderCard({
+      advancedOpen: true,
+      note: `PR #10575 — ${'a note title long enough to wrap over several lines '.repeat(3)}`
+    })
+
+    expect(findNoteTextarea(current.container).className).toContain('[field-sizing:content]')
+  })
+
+  it('keeps a note past the height cap readable instead of clipping it', () => {
+    current = renderCard({ advancedOpen: true, note: 'a'.repeat(4000) })
+
+    const { className } = findNoteTextarea(current.container)
+    expect(className).toContain('max-h-40')
+    expect(className).toContain('overflow-y-auto')
+    expect(className).toContain('scrollbar-sleek')
+    expect(className).not.toContain('overflow-hidden')
   })
 })

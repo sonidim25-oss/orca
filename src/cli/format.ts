@@ -2,7 +2,7 @@ import type { CliStatusResult } from '../shared/runtime-types'
 import { computerUseErrorRecoveryData } from '../shared/computer-use-error-recovery'
 import { prepareComputerCliJsonResult } from './computer-format'
 import type { RuntimeRpcFailure, RuntimeRpcSuccess } from './runtime-client'
-import { RuntimeClientError, RuntimeRpcFailureError } from './runtime-client'
+import { RuntimeClientError, RuntimeRpcFailureError } from './runtime/types'
 
 export {
   formatBrowserProfileList,
@@ -78,6 +78,9 @@ export function printResult<TResult>(
 export function formatCliError(error: unknown, context: CliErrorContext = {}): string {
   const message = error instanceof Error ? error.message : String(error)
   if (error instanceof RuntimeClientError && error.code === 'runtime_unavailable') {
+    if (hasOrchestrationRequestId(error.data)) {
+      return message
+    }
     return `${message}\nOrca is not running. Run 'orca open' first.`
   }
   // Why: error-specific recovery must win over the generic computer fallback.
@@ -103,6 +106,14 @@ export function formatCliError(error: unknown, context: CliErrorContext = {}): s
     return formatMessageWithNextSteps(message, nextStepsFromData(error.response.error.data))
   }
   return message
+}
+
+function hasOrchestrationRequestId(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === 'object' &&
+    typeof (data as { orchestrationRequestId?: unknown }).orchestrationRequestId === 'string'
+  )
 }
 
 export function reportCliError(error: unknown, json: boolean, context: CliErrorContext = {}): void {

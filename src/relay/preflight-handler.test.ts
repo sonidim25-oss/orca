@@ -6,13 +6,17 @@ const { execFileAsyncMock, existsSyncMock } = vi.hoisted(() => ({
   existsSyncMock: vi.fn((_candidate: string) => true)
 }))
 
-const { isPwshAvailableMock, isWslAvailableMock, listWslDistrosMock, isGitBashAvailableMock } =
-  vi.hoisted(() => ({
-    isPwshAvailableMock: vi.fn(),
-    isWslAvailableMock: vi.fn(),
-    listWslDistrosMock: vi.fn(),
-    isGitBashAvailableMock: vi.fn()
-  }))
+const {
+  isPwshAvailableAsyncMock,
+  isWslAvailableAsyncMock,
+  listWslDistrosAsyncMock,
+  isGitBashAvailableMock
+} = vi.hoisted(() => ({
+  isPwshAvailableAsyncMock: vi.fn(),
+  isWslAvailableAsyncMock: vi.fn(),
+  listWslDistrosAsyncMock: vi.fn(),
+  isGitBashAvailableMock: vi.fn()
+}))
 
 vi.mock('child_process', () => {
   const execFileWithPromisify = Object.assign(vi.fn(), {
@@ -22,10 +26,10 @@ vi.mock('child_process', () => {
 })
 vi.mock('node:fs', () => ({ existsSync: existsSyncMock }))
 
-vi.mock('../main/pwsh', () => ({ isPwshAvailable: isPwshAvailableMock }))
+vi.mock('../main/pwsh', () => ({ isPwshAvailableAsync: isPwshAvailableAsyncMock }))
 vi.mock('../main/wsl', () => ({
-  isWslAvailable: isWslAvailableMock,
-  listWslDistros: listWslDistrosMock
+  isWslAvailableAsync: isWslAvailableAsyncMock,
+  listWslDistrosAsync: listWslDistrosAsyncMock
 }))
 vi.mock('../main/git-bash', () => ({ isGitBashAvailable: isGitBashAvailableMock }))
 
@@ -65,9 +69,9 @@ beforeEach(() => {
   execFileAsyncMock.mockReset()
   existsSyncMock.mockReset()
   existsSyncMock.mockReturnValue(true)
-  isPwshAvailableMock.mockReset()
-  isWslAvailableMock.mockReset()
-  listWslDistrosMock.mockReset()
+  isPwshAvailableAsyncMock.mockReset()
+  isWslAvailableAsyncMock.mockReset()
+  listWslDistrosAsyncMock.mockReset()
   isGitBashAvailableMock.mockReset()
 })
 
@@ -339,9 +343,9 @@ describe('PreflightHandler', () => {
       configurable: true,
       value: 'win32'
     })
-    isWslAvailableMock.mockReturnValue(true)
-    listWslDistrosMock.mockReturnValue(['Ubuntu'])
-    isPwshAvailableMock.mockReturnValue(true)
+    isWslAvailableAsyncMock.mockResolvedValue(true)
+    listWslDistrosAsyncMock.mockResolvedValue(['Ubuntu'])
+    isPwshAvailableAsyncMock.mockResolvedValue(true)
     isGitBashAvailableMock.mockReturnValue(true)
 
     const requestHandlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>()

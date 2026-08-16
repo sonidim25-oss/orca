@@ -55,3 +55,34 @@ export function getPromptAnalyzerModelDescription(provider: SupportedProvider): 
 export function getPromptAnalyzerModelPlaceholder(provider: SupportedProvider): string {
   return PROVIDER_MODEL_PLACEHOLDERS[provider]
 }
+
+export function getPromptAnalyzerPanelCopy(provider: SupportedProvider) {
+  return {
+    missingApiKeyTitle: translate(
+      'promptAnalyzer.panel.missingApiKeyTitle',
+      'Missing {{provider}} API Key',
+      { provider: getProviderLabel(provider) }
+    ),
+    missingApiKeyDescription: translate(
+      'promptAnalyzer.panel.missingApiKeyDescription',
+      'Add your API key in Settings > Prompt Analyzer'
+    ),
+    beforeSendTitle: translate('promptAnalyzer.panel.beforeSendTitle', 'Before you send'),
+    improvedToastTitle: translate('promptAnalyzer.panel.improvedToastTitle', 'Prompt improved'),
+    improvedToastDescription: translate(
+      'promptAnalyzer.panel.improvedToastDescription',
+      'Click Copy to use it in any agent terminal'
+    ),
+    improvementFailed: translate('promptAnalyzer.panel.improvementFailed', 'Improvement failed'),
+    copiedToastTitle: translate('promptAnalyzer.panel.copiedToastTitle', 'Copied!'),
+    copiedToastDescription: translate(
+      'promptAnalyzer.panel.copiedToastDescription',
+      'Paste into any agent terminal'
+    ),
+    copyFailed: translate('promptAnalyzer.panel.copyFailed', 'Copy failed'),
+    clipboardUnavailable: translate(
+      'promptAnalyzer.panel.clipboardUnavailable',
+      'Could not access clipboard'
+    )
+  }
+}

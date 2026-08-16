@@ -4,7 +4,7 @@ import type {
   PromptAnalyzerAnalyzeResponse,
   SupportedProvider
 } from '../../shared/prompt-analyzer-types'
-import type { GlobalSettings } from '../../shared/types'
+import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Store } from '../persistence'
 import {
   clearPromptAnalyzerApiKey,
@@ -107,10 +107,6 @@ async function analyzeWithProvider(
       return analyzeWithAnthropic(args, apiKey, signal)
     case 'google_ai':
       return analyzeWithGoogleAI(args, apiKey, signal)
-    default: {
-      const exhaustiveCheck: never = provider
-      throw new Error(`Provider ${exhaustiveCheck} is not supported`)
-    }
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, X, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -10,8 +10,8 @@ import { translate } from '@/i18n/i18n'
 import { toast } from 'sonner'
 import { usePromptAnalyzer, DEFAULT_PROVIDER } from '@/prompt-analyzer'
 import { resolveActivePromptAnalyzerModel } from '@/prompt-analyzer/resolve-active-model'
-import { useConfirmationDialog } from '@/components/confirmation-dialog'
-import { getProviderLabel } from '@/components/settings/prompt-analyzer-copy'
+import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
+import { getPromptAnalyzerPanelCopy } from '@/components/settings/prompt-analyzer-copy'
 import { PROMPT_ANALYZER_PROMPT_MAX_CHARS } from '../../../../shared/prompt-analyzer-types'
 import { PromptAnalyzerResult } from './PromptAnalyzerResult'
 import { SavedPrompts } from './SavedPrompts'
@@ -58,6 +58,7 @@ export function PromptAnalyzerPanel({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const activeProvider = settings?.promptAnalyzerProvider ?? DEFAULT_PROVIDER
+  const panelCopy = useMemo(() => getPromptAnalyzerPanelCopy(activeProvider), [activeProvider])
   const activeModel = activePromptAnalyzerModel ?? resolveActivePromptAnalyzerModel(settings)
   const resultPrompt = improvedPrompt || lastSuccessfulResult?.improvedPrompt || ''
   const displayedImprovedPrompt = resultPrompt.slice(0, IMPROVED_PROMPT_DISPLAY_LIMIT)
@@ -137,8 +138,8 @@ export function PromptAnalyzerPanel({
 
     if (!activeApiKeyConfigured) {
       reportMissingApiKey(activeProvider)
-      toast.error(`Missing ${getProviderLabel(activeProvider)} API Key`, {
-        description: 'Add your API key in Settings > Prompt Analyzer'
+      toast.error(panelCopy.missingApiKeyTitle, {
+        description: panelCopy.missingApiKeyDescription
       })
       return
     }
@@ -146,7 +147,7 @@ export function PromptAnalyzerPanel({
     if (!hasWarned) {
       setIsWarningOpen(true)
       const confirmed = await confirm({
-        title: 'Before you send',
+        title: panelCopy.beforeSendTitle,
         description: PROVIDER_WARNING,
         confirmLabel: 'Send prompt'
       })
@@ -164,12 +165,14 @@ export function PromptAnalyzerPanel({
         return
       }
 
-      toast.success('Prompt improved', {
-        description: 'Click Copy to use it in any agent terminal'
+      toast.success(panelCopy.improvedToastTitle, {
+        description: panelCopy.improvedToastDescription
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to improve prompt'
-      toast.error('Improvement failed', { description: message })
+      toast.error(panelCopy.improvementFailed, {
+        description: message
+      })
     }
   }
 
@@ -189,13 +192,17 @@ export function PromptAnalyzerPanel({
         } else {
           throw new Error('No clipboard API available')
         }
-        toast.success('Copied!', { description: 'Paste into any agent terminal' })
+        toast.success(panelCopy.copiedToastTitle, {
+          description: panelCopy.copiedToastDescription
+        })
         onCopied?.()
       } catch {
-        toast.error('Copy failed', { description: 'Could not access clipboard' })
+        toast.error(panelCopy.copyFailed, {
+          description: panelCopy.clipboardUnavailable
+        })
       }
     },
-    [resultPrompt, originalPrompt]
+    [panelCopy, resultPrompt, originalPrompt]
   )
 
   const handleSave = useCallback(() => {
@@ -266,10 +273,14 @@ export function PromptAnalyzerPanel({
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1.5 text-destructive">
                     <AlertCircle className="size-3" />
-                    <span className="text-[11px]">Error</span>
+                    <span className="text-[11px]">
+                      {translate('promptAnalyzer.panel.errorLabel', 'Error')}
+                    </span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="left">{error || 'Unknown error'}</TooltipContent>
+                <TooltipContent side="left">
+                  {error || translate('promptAnalyzer.panel.unknownError', 'Unknown error')}
+                </TooltipContent>
               </Tooltip>
             )}
 
@@ -285,7 +296,9 @@ export function PromptAnalyzerPanel({
                   <X className="size-4" strokeWidth={2} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="left">Close</TooltipContent>
+              <TooltipContent side="left">
+                {translate('promptAnalyzer.panel.closeTooltip', 'Close')}
+              </TooltipContent>
             </Tooltip>
           </div>
         </header>
@@ -336,7 +349,9 @@ export function PromptAnalyzerPanel({
                     <span>{translate('promptAnalyzer.panel.cancel', 'Cancel')}</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left">Close without saving</TooltipContent>
+                <TooltipContent side="left">
+                  {translate('promptAnalyzer.panel.cancelTooltip', 'Close without saving')}
+                </TooltipContent>
               </Tooltip>
 
               <Tooltip>

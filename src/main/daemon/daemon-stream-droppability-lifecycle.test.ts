@@ -7,7 +7,7 @@ import { DaemonServer } from './daemon-server'
 import type { DaemonStreamDataBatcher } from './daemon-stream-data-batcher'
 import type { BackgroundTransientFactRelay } from './daemon-background-transient-facts'
 import type { PendingStreamDataBatch } from './daemon-stream-keep-tail-drop'
-import type { SubprocessHandle } from './session'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import type { DaemonRequest } from './types'
 
 type MockSubprocess = SubprocessHandle & {
@@ -173,6 +173,37 @@ describe('daemon stream droppability lifecycle', () => {
       payload: { sessionId: 'session-toggle', background: false }
     })
     expect(lifecycle).toEqual(['refresh:false', 'marker:false'])
+  })
+
+  it('returns a provisional 2031 subscribe with the foreground handoff marker', async () => {
+    const harness = createServerHarness()
+    server = harness.server
+    const { daemon } = harness
+    addClient(daemon)
+    daemon.streamClientIdBySessionId.set('session-toggle', 'client-1')
+    daemon.transientFactRelay.setSessionBackground('session-toggle', true)
+    daemon.transientFactRelay.onSessionData('session-toggle', '\x1b[?2031h\x1b[?')
+    vi.spyOn(daemon.host, 'getPartialEscapeTailAnsi').mockReturnValue('\x1b[?')
+    const enqueue = vi.spyOn(daemon.streamDataBatcher, 'enqueueControlEvent')
+
+    await daemon.routeRequest('client-1', {
+      id: 'foreground',
+      type: 'setSessionBackground',
+      payload: { sessionId: 'session-toggle', background: false }
+    })
+
+    expect(enqueue).toHaveBeenCalledWith(
+      'client-1',
+      'session-toggle',
+      expect.objectContaining({
+        event: 'sessionBackgroundMarker',
+        payload: {
+          background: false,
+          scanSeedAnsi: '\x1b[?',
+          mode2031PendingSubscribe: true
+        }
+      })
+    )
   })
 
   it('routes an attached session before refresh and emits its background marker after', async () => {

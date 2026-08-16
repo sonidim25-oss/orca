@@ -1,4 +1,4 @@
-import type { GlobalSettings } from '../../../shared/types'
+import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type { RuntimeTerminalSend } from '../../../shared/runtime-types'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { isTerminalInputTooLargeWithDeferredMeasurement } from '../../../shared/terminal-input'
@@ -94,6 +94,32 @@ export async function inspectRuntimeTerminalProcess(
     }
     throw error
   }
+}
+
+/**
+ * Forces a fresh, uncached foreground scan for a pane whose cached inspection
+ * is suspect (issue #11064: the cached read can flap to the shell for a live
+ * agent). Local/daemon panes only — runtime environments expose no fresh-scan
+ * RPC, and an SSH provider without confirm support answers null, which callers
+ * must read as "no new evidence", never as a shell confirmation.
+ */
+export async function confirmRuntimeTerminalForegroundProcess(
+  settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
+  ptyId: string
+): Promise<string | null> {
+  const ownerEnvironmentId = getRemoteRuntimePtyEnvironmentId(ptyId)
+  const target = ownerEnvironmentId
+    ? ({ kind: 'environment', environmentId: ownerEnvironmentId } as const)
+    : getActiveRuntimeTarget(settings)
+  if (target.kind === 'environment' && getRemoteRuntimeTerminalHandle(ptyId)) {
+    return null
+  }
+  const confirmForegroundProcess = window.api.pty.confirmForegroundProcess
+  // Why the shape check: a preload older than this handler has no such method.
+  if (typeof confirmForegroundProcess !== 'function') {
+    return null
+  }
+  return confirmForegroundProcess(ptyId).catch(() => null)
 }
 
 export function sendRuntimePtyInput(

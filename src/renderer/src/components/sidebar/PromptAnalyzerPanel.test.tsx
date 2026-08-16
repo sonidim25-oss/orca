@@ -65,7 +65,7 @@ vi.mock('@/prompt-analyzer', () => ({
   DEFAULT_PROVIDER: 'openrouter'
 }))
 
-vi.mock('@/components/confirmation-dialog', () => ({
+vi.mock('@/components/confirmation-dialog-context', () => ({
   useConfirmationDialog: () => mocks.confirm
 }))
 
