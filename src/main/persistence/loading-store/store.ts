@@ -16,9 +16,11 @@ import {
   renameDurable,
   writeFileDurableSync
 } from '../../durable-file-write'
+import { safeStorage } from 'electron'
 import { dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
+import { hardenExistingSecureFile } from '../../../shared/secure-file'
 import type {
   Automation,
   AutomationCreateInput,
@@ -358,6 +360,7 @@ import { ProjectHostSetupPersistenceOperations } from '../tracking-repos/project
 // Why (issue #1158): keep 5 rolling backups at >=1h spacing so a corrupt/empty write leaves an earlier copy recoverable.
 const BACKUP_COUNT = 5
 const BACKUP_MIN_INTERVAL_MS = 60 * 60 * 1000
+const SETTINGS_FILE_MODE = 0o600
 const WORKSPACE_SESSION_PATCH_FULL_NORMALIZATION_KEYS = new Set<keyof WorkspaceSessionState>([
   'tabsByWorktree',
   'terminalLayoutsByTabId'
@@ -437,6 +440,48 @@ async function exists(path: string): Promise<boolean> {
     () => true,
     () => false
   )
+}
+
+function encryptSavedPrompts(plaintext: string): string {
+  if (!plaintext || !safeStorage.isEncryptionAvailable()) {
+    return plaintext
+  }
+  try {
+    return safeStorage.encryptString(plaintext).toString('base64')
+  } catch (err) {
+    console.error('[persistence] Encryption failed:', err)
+    return plaintext
+  }
+}
+
+function decryptSavedPromptsValue(ciphertext: string): string {
+  if (!ciphertext || !safeStorage.isEncryptionAvailable()) {
+    return ciphertext
+  }
+  try {
+    return safeStorage.decryptString(Buffer.from(ciphertext, 'base64'))
+  } catch {
+    // Why: decrypt failure usually means plaintext (pre-encryption) or a changed keychain; return raw so the saved prompts survive upgrade.
+    console.warn(
+      '[persistence] safeStorage decryption failed — returning ciphertext as-is. Possible keychain reset.'
+    )
+    return ciphertext
+  }
+}
+
+function decryptSavedPrompts(value: unknown): GlobalSettings['promptAnalyzerSavedPrompts'] {
+  if (Array.isArray(value)) {
+    return value as GlobalSettings['promptAnalyzerSavedPrompts']
+  }
+  if (typeof value !== 'string') {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(decryptSavedPromptsValue(value)) as unknown
+    return Array.isArray(parsed) ? (parsed as GlobalSettings['promptAnalyzerSavedPrompts']) : []
+  } catch {
+    return []
+  }
 }
 
 function normalizeRetiredNameRegistry(row: unknown): RetiredNameRegistry {
@@ -738,14 +783,19 @@ export class Store {
         // Why probe instead of rename-then-swallow-ENOENT: a degraded mount rejects a rename of an
         // absent slot with ESTALE/EIO, which would log once per empty slot on every debounced save.
         if (await exists(src)) {
-          await rename(src, dst).catch((err) => {
-            console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
-          })
+          await rename(src, dst)
+            .then(() => hardenExistingSecureFile(dst))
+            .catch((err) => {
+              console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
+            })
         }
       }
-      await copyFile(dataFile, backupPath(dataFile, 0)).catch((err) => {
-        console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
-      })
+      const newestBackup = backupPath(dataFile, 0)
+      await copyFile(dataFile, newestBackup)
+        .then(() => hardenExistingSecureFile(newestBackup))
+        .catch((err) => {
+          console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
+        })
     } finally {
       this.backupRotationInFlight = false
     }
@@ -768,13 +818,16 @@ export class Store {
       if (existsSync(src)) {
         try {
           renameSync(src, dst)
+          hardenExistingSecureFile(dst)
         } catch (err) {
           console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
         }
       }
     }
     try {
-      copyFileSync(dataFile, backupPath(dataFile, 0))
+      const newestBackup = backupPath(dataFile, 0)
+      copyFileSync(dataFile, newestBackup)
+      hardenExistingSecureFile(newestBackup)
     } catch (err) {
       console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
     }
@@ -790,7 +843,8 @@ export class Store {
         const raw = readFileSync(path, 'utf-8')
         JSON.parse(raw)
         mkdirSync(dirname(dataFile), { recursive: true })
-        writeFileSync(dataFile, raw, 'utf-8')
+        writeFileSync(dataFile, raw, { encoding: 'utf-8', mode: SETTINGS_FILE_MODE })
+        hardenExistingSecureFile(dataFile)
         console.warn(`[persistence] Recovered state from backup slot ${i}: ${path}`)
         return true
       } catch (err) {
@@ -853,6 +907,11 @@ export class Store {
             this.protectedSecrets.removeRetainedBlob(PROTECTED_SECRET_SLOT.httpProxyUrl)
             this.loadNeedsSave = true
           }
+        }
+        if (parsed.settings?.promptAnalyzerSavedPrompts !== undefined) {
+          parsed.settings.promptAnalyzerSavedPrompts = decryptSavedPrompts(
+            parsed.settings.promptAnalyzerSavedPrompts
+          )
         }
         if (parsed.ui?.browserKagiSessionLink) {
           parsed.ui.browserKagiSessionLink = this.protectedSecrets.decrypt(
@@ -1778,6 +1837,17 @@ export class Store {
       const encrypted = encryptToSentinel(slot, plaintext ?? '')
       return encrypted || null
     }
+    // Why: saved prompts degrade to plaintext JSON when safeStorage is unavailable (no ciphertext
+    // retained per-slot), so a keychain reset doesn't erase the user's prompts.
+    const encryptSavedPromptsToSentinel = (plaintext: string): string => {
+      const blob = encryptSavedPrompts(plaintext)
+      if (blob === plaintext) {
+        return blob
+      }
+      const sentinel = `orca-secret-slot-${randomUUID()}`
+      secretSubs.push({ sentinel, blob, hashValue: plaintext })
+      return sentinel
+    }
     // Why: clone before encrypting secrets so in-memory this.state stays plaintext.
     const stateToSave = {
       ...this.getDurableState(),
@@ -1804,6 +1874,9 @@ export class Store {
         httpProxyUrl: encryptToSentinel(
           PROTECTED_SECRET_SLOT.httpProxyUrl,
           this.state.settings.httpProxyUrl ?? ''
+        ),
+        promptAnalyzerSavedPrompts: encryptSavedPromptsToSentinel(
+          JSON.stringify(this.state.settings.promptAnalyzerSavedPrompts ?? [])
         )
       },
       ui: {
@@ -1856,7 +1929,8 @@ export class Store {
     let renamed = false
     try {
       // Why: fsync before rename, then fsync the directory; see writeFileDurable.
-      const handle = await open(tmpFile, 'w')
+      // Why: mode is a no-op on Windows; POSIX settings stay owner-only.
+      const handle = await open(tmpFile, 'w', SETTINGS_FILE_MODE)
       try {
         await handle.writeFile(payload, 'utf-8')
         await handle.sync()
@@ -1927,7 +2001,7 @@ export class Store {
     try {
       // Why: fsync the temp file and the directory; a bare rename can survive as stale or empty
       // content after power loss, losing projects/tabs back to the newest usable .bak slot.
-      writeFileDurableSync(tmpFile, dataFile, payload)
+      writeFileDurableSync(tmpFile, dataFile, payload, SETTINGS_FILE_MODE)
       renamed = true
       this.lastWrittenStateHash = stateHash
       this.protectedSecrets.commitRetentionUpdates(protectedSecretUpdates)
