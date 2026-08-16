@@ -79,7 +79,7 @@ export function SavedPrompts({ prompts }: SavedPromptsProps): React.JSX.Element 
               {isExpanded && (
                 <div id={detailsId} className="mt-2" role="region" aria-labelledby={titleId}>
                   <div className="rounded-lg border border-prompt-analyzer-border bg-prompt-analyzer-bg p-3">
-                    <div className="scrollbar-sleek max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-[12px] text-prompt-analyzer-foreground">
+                    <div className="whitespace-pre-wrap break-words text-[12px] text-prompt-analyzer-foreground">
                       {prompt.improvedPrompt}
                     </div>
                   </div>
