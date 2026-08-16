@@ -292,11 +292,6 @@ export function PromptAnalyzerPanel({
 
         {/* Content */}
         <div className="scrollbar-sleek flex-1 overflow-y-auto p-4">
-          {/* Title */}
-          <h1 className="text-lg font-semibold text-prompt-analyzer-foreground">
-            {translate('promptAnalyzer.panel.title', 'Prompt Analyzer')}
-          </h1>
-
           {/* Textarea */}
           <div className="flex flex-col gap-3 mt-4">
             <label className="text-[12px] font-medium text-prompt-analyzer-muted-foreground">
