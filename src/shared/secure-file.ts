@@ -11,6 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
+import { chmod } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import {
   SecurePathHardeningCache,
@@ -171,6 +172,29 @@ export function hardenExistingSecureFile(targetPath: string): void {
   }
   if (existsSync(targetPath)) {
     hardenSecurePathOnce(targetPath, false)
+  }
+}
+
+/**
+ * Async variant for the debounced write path, which must never issue a sync fs
+ * syscall (it would stall the main thread on a degraded mount). POSIX chmod only;
+ * Windows relies on safeStorage DPAPI, so the ACL no-op is skipped to avoid a
+ * PowerShell spawn on every debounced save.
+ */
+export async function hardenExistingSecureFileAsync(targetPath: string): Promise<void> {
+  if (process.platform === 'win32') {
+    return
+  }
+  const dir = dirname(targetPath)
+  try {
+    await chmod(dir, 0o700)
+  } catch {
+    // Why: dir may not exist yet; the file chmod is the guarantee.
+  }
+  try {
+    await chmod(targetPath, 0o600)
+  } catch {
+    // Why: file may not exist yet; next rotation re-hardens.
   }
 }
 

@@ -20,7 +20,10 @@ import { safeStorage } from 'electron'
 import { dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
-import { hardenExistingSecureFile } from '../../../shared/secure-file'
+import {
+  hardenExistingSecureFile,
+  hardenExistingSecureFileAsync
+} from '../../../shared/secure-file'
 import type {
   Automation,
   AutomationCreateInput,
@@ -442,8 +445,18 @@ async function exists(path: string): Promise<boolean> {
   )
 }
 
+function encryptionAvailable(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable()
+  } catch (err) {
+    // Why: some platforms throw when the keychain is locked; treat as unavailable.
+    console.warn('[persistence] safeStorage availability check failed:', err)
+    return false
+  }
+}
+
 function encryptSavedPrompts(plaintext: string): string {
-  if (!plaintext || !safeStorage.isEncryptionAvailable()) {
+  if (!plaintext || !encryptionAvailable()) {
     return plaintext
   }
   try {
@@ -455,7 +468,7 @@ function encryptSavedPrompts(plaintext: string): string {
 }
 
 function decryptSavedPromptsValue(ciphertext: string): string {
-  if (!ciphertext || !safeStorage.isEncryptionAvailable()) {
+  if (!ciphertext || !encryptionAvailable()) {
     return ciphertext
   }
   try {
@@ -784,7 +797,7 @@ export class Store {
         // absent slot with ESTALE/EIO, which would log once per empty slot on every debounced save.
         if (await exists(src)) {
           await rename(src, dst)
-            .then(() => hardenExistingSecureFile(dst))
+            .then(() => hardenExistingSecureFileAsync(dst))
             .catch((err) => {
               console.error('[persistence] Failed to rotate backup', src, '->', dst, err)
             })
@@ -792,7 +805,7 @@ export class Store {
       }
       const newestBackup = backupPath(dataFile, 0)
       await copyFile(dataFile, newestBackup)
-        .then(() => hardenExistingSecureFile(newestBackup))
+        .then(() => hardenExistingSecureFileAsync(newestBackup))
         .catch((err) => {
           console.error('[persistence] Failed to snapshot current file to .bak.0:', err)
         })
