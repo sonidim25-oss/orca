@@ -205,6 +205,43 @@ describe('PromptAnalyzerSlice', () => {
     ])
   })
 
+  it('ignores repeated saves of the same prompt result', () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-duplicate') })
+    store.setState({ originalPrompt: 'Original', improvedPrompt: 'Improved' })
+
+    store.getState().savePromptLocally()
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toHaveLength(1)
+    expect(mockUpdateSettings).toHaveBeenCalledOnce()
+  })
+
+  it('appends a save when the prompt result changes', () => {
+    const randomUUID = vi
+      .fn()
+      .mockReturnValueOnce('saved-first')
+      .mockReturnValueOnce('saved-second')
+    vi.stubGlobal('crypto', { randomUUID })
+    store.setState({ originalPrompt: 'First original', improvedPrompt: 'First improved' })
+    store.getState().savePromptLocally()
+
+    store.setState({ originalPrompt: 'Second original', improvedPrompt: 'Second improved' })
+    store.getState().savePromptLocally()
+
+    expect(store.getState().savedPrompts).toEqual([
+      expect.objectContaining({
+        id: 'saved-first',
+        originalPrompt: 'First original',
+        improvedPrompt: 'First improved'
+      }),
+      expect.objectContaining({
+        id: 'saved-second',
+        originalPrompt: 'Second original',
+        improvedPrompt: 'Second improved'
+      })
+    ])
+  })
+
   it('falls back to the retained result and ignores an empty save', () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'saved-2') })
     store.getState().savePromptLocally()

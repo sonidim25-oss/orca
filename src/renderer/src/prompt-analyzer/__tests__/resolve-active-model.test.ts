@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL } from '../../../../shared/prompt-analyzer-types'
 import type { GlobalSettings } from '../../../../shared/types'
 import { resolveActivePromptAnalyzerModel } from '../resolve-active-model'
 
@@ -9,7 +10,7 @@ type ModelSettings = Pick<
 
 describe('resolveActivePromptAnalyzerModel', () => {
   it('uses the default provider and model when settings are empty', () => {
-    expect(resolveActivePromptAnalyzerModel({})).toBe('openrouter/auto-beta')
+    expect(resolveActivePromptAnalyzerModel({})).toBe(PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL)
   })
 
   it('uses the selected per-provider model', () => {
@@ -29,7 +30,7 @@ describe('resolveActivePromptAnalyzerModel', () => {
 
   it('uses the OpenRouter default model when its model is unset', () => {
     expect(resolveActivePromptAnalyzerModel({ promptAnalyzerProvider: 'openrouter' })).toBe(
-      'openrouter/auto-beta'
+      PROMPT_ANALYZER_OPENROUTER_DEFAULT_MODEL
     )
   })
 

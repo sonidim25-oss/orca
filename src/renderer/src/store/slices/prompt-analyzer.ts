@@ -97,6 +97,15 @@ export const createPromptAnalyzerSlice: StateCreator<AppState, [], [], PromptAna
       if (!result) {
         return {}
       }
+      if (
+        state.savedPrompts.some(
+          (prompt) =>
+            prompt.originalPrompt === result.originalPrompt &&
+            prompt.improvedPrompt === result.improvedPrompt
+        )
+      ) {
+        return {}
+      }
 
       const nextPrompt: SavedPrompt = {
         id: crypto.randomUUID(),

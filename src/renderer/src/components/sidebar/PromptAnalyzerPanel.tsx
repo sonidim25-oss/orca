@@ -116,6 +116,10 @@ export function PromptAnalyzerPanel({
 
   // Handle escape key to close
   useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen && !isWarningOpen) {
         onClose()
@@ -246,17 +250,13 @@ export function PromptAnalyzerPanel({
       {/* Panel content */}
       <div className="relative flex flex-col h-full w-full bg-prompt-analyzer-surface mt-10">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-prompt-analyzer-border px-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[13px] font-medium tracking-tight text-prompt-analyzer-foreground">
-              {translate('promptAnalyzer.panel.title', 'Prompt Analyzer')}
-            </h2>
-          </div>
+          <div className="flex items-center gap-2" />
 
           <div className="flex items-center gap-2">
             {activeModel && (
               <Badge
                 variant="outline"
-                className="h-7 border-prompt-analyzer-border bg-prompt-analyzer-surface px-2 py-0 text-[16px] font-normal leading-none text-prompt-analyzer-muted-foreground"
+                className="h-7 max-w-48 truncate border-prompt-analyzer-border bg-prompt-analyzer-surface px-2 py-0 text-[16px] font-normal leading-none text-prompt-analyzer-muted-foreground"
               >
                 {activeModel}
               </Badge>

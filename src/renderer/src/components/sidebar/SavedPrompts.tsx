@@ -24,6 +24,9 @@ function getPreview(prompt: string): string {
 
 export function SavedPrompts({ prompts }: SavedPromptsProps): React.JSX.Element | null {
   const [expandedPromptId, setExpandedPromptId] = useState<string | null>(null)
+  const expandedId = prompts.some((prompt) => prompt.id === expandedPromptId)
+    ? expandedPromptId
+    : null
 
   if (prompts.length === 0) {
     return null
@@ -37,7 +40,7 @@ export function SavedPrompts({ prompts }: SavedPromptsProps): React.JSX.Element 
 
       <ul className="mt-3 space-y-2">
         {prompts.map((prompt) => {
-          const isExpanded = expandedPromptId === prompt.id
+          const isExpanded = expandedId === prompt.id
           const detailsId = `saved-prompt-${prompt.id}`
           const titleId = `${detailsId}-title`
 
