@@ -1,5 +1,5 @@
 LIST:
 1. [x] Increase size of input and output of prompt analyzer (increase height of both text containers).
 2. [x] Prompt analyzer sidebar scrollbar should be black, not white.
-3. Save improved prompt behavior: saves prompts below the output field like chat messages in a messenger; clicking opens them to read the text in full size.
+3. [x] Save improved prompt behavior: saves prompts below the output field like chat messages in a messenger; clicking opens them to read the text in full size.
 4. [x] Display the currently used model name in the Prompt Analyzer UI (updates dynamically when provider/model changes; shows model name, not provider name).
