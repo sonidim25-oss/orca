@@ -291,7 +291,7 @@ export function PromptAnalyzerPanel({
         </header>
 
         {/* Content */}
-        <div className="scrollbar-sleek flex-1 overflow-y-auto p-4">
+        <div className="scrollbar-sleek min-h-0 flex-1 overflow-y-auto p-4">
           {/* Textarea */}
           <div className="flex flex-col gap-3 mt-4">
             <label className="text-[12px] font-medium text-prompt-analyzer-muted-foreground">
