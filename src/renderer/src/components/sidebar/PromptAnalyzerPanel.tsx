@@ -226,6 +226,12 @@ export function PromptAnalyzerPanel({
     [updatePrompt]
   )
 
+  const handleCancel = useCallback(() => {
+    updatePrompt('')
+    dismissResult()
+    textareaRef.current?.focus()
+  }, [updatePrompt, dismissResult])
+
   if (!isOpen) {
     return null
   }
@@ -344,13 +350,13 @@ export function PromptAnalyzerPanel({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={handleCancel} className="gap-1.5">
                     <X className="size-3.5" strokeWidth={2} />
                     <span>{translate('promptAnalyzer.panel.cancel', 'Cancel')}</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left">
-                  {translate('promptAnalyzer.panel.cancelTooltip', 'Close without saving')}
+                  {translate('promptAnalyzer.panel.cancelTooltip', 'Clear prompt')}
                 </TooltipContent>
               </Tooltip>
 
